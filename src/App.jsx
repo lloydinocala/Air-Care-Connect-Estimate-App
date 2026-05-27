@@ -965,28 +965,56 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
   const [loadingProp, setLoadingProp] = useState(true);
   const [streetViewError, setStreetViewError] = useState(false);
 
-  // Build Street View URL - prefer address string for best results
-  const streetViewUrl = propData?.address
-    ? `https://maps.googleapis.com/maps/api/streetview?size=600x400&location=${encodeURIComponent(propData.address)}&fov=80&heading=235&pitch=10&return_error_code=true&key=${STREET_VIEW_KEY}`
-    : propData?.lat && propData?.lng
-    ? `https://maps.googleapis.com/maps/api/streetview?size=600x400&location=${propData.lat},${propData.lng}&fov=80&return_error_code=true&key=${STREET_VIEW_KEY}`
-    : null;
+  // Street View state
+  const [svUrl, setSvUrl] = useState(null);
 
-  // Check Street View availability using metadata endpoint
-  const [streetViewChecked, setStreetViewChecked] = useState(false);
+  // Fetch Street View metadata to get correct heading toward the property
   useEffect(() => {
     if (!propData?.address && !propData?.lat) return;
-    const loc = propData.address
-      ? encodeURIComponent(propData.address)
-      : `${propData.lat},${propData.lng}`;
-    fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${loc}&key=${STREET_VIEW_KEY}`)
+
+    const loc = propData.lat && propData.lng
+      ? `${propData.lat},${propData.lng}`
+      : encodeURIComponent(propData.address);
+
+    // Step 1: Get metadata to find nearest panorama and its heading
+    fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${loc}&source=outdoor&key=${STREET_VIEW_KEY}`)
       .then(r => r.json())
-      .then(data => {
-        if (data.status !== "OK") setStreetViewError(true);
-        setStreetViewChecked(true);
+      .then(meta => {
+        if (meta.status !== "OK") {
+          setStreetViewError(true);
+          return;
+        }
+
+        // Step 2: If we have lat/lng of property and the pano location,
+        // calculate the heading from pano toward the property
+        let heading = 0;
+        if (propData.lat && propData.lng && meta.location) {
+          const panoLat = meta.location.lat;
+          const panoLng = meta.location.lng;
+          const propLat = propData.lat;
+          const propLng = propData.lng;
+
+          // Calculate bearing from street view camera toward property
+          const dLng = (propLng - panoLng) * Math.PI / 180;
+          const lat1 = panoLat * Math.PI / 180;
+          const lat2 = propLat * Math.PI / 180;
+          const y = Math.sin(dLng) * Math.cos(lat2);
+          const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+          heading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+
+        // Step 3: Build final Street View URL with correct heading
+        const panoId = meta.pano_id;
+        const url = panoId
+          ? `https://maps.googleapis.com/maps/api/streetview?size=600x400&pano=${panoId}&heading=${Math.round(heading)}&pitch=5&fov=90&key=${STREET_VIEW_KEY}`
+          : `https://maps.googleapis.com/maps/api/streetview?size=600x400&location=${loc}&heading=${Math.round(heading)}&pitch=5&fov=90&key=${STREET_VIEW_KEY}`;
+
+        setSvUrl(url);
       })
-      .catch(() => { setStreetViewError(true); setStreetViewChecked(true); });
-  }, [propData.address]);
+      .catch(() => setStreetViewError(true));
+  }, [propData.lat, propData.lng, propData.address]);
+
+  const streetViewUrl = svUrl;
 
   // Fetch real property data from RentCast via secure serverless function
   useEffect(() => {
