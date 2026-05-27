@@ -67,7 +67,7 @@ const T = {
     prepBullet2: "Checking installation requirements",
     prepBullet3: "Preparing pricing options",
     almostReady: "Almost ready...",
-    estimateReady: "Your AC Estimate Is Ready",
+    estimateReady: "Please Choose A Brand",
     recommendedSystem: "Recommended System",
     priceRangeDesc: "This range is based on your home details, current AC setup, and standard replacement requirements.",
     chooseBrandFamily: "Choose Brand Family",
@@ -86,7 +86,7 @@ const T = {
     recommendationTitle: "Your System Recommendations",
     bestValue: "Best Value", bestEfficiency: "Best Efficiency",
     seer2Label: "SEER2", tonsLabel: "Tons", priceLabel: "Installed Price",
-    saveOption: "Save This Option", savedOptions: "Review Saved Options",
+    saveOption: "Save This Option", saved: "Saved", savedOptions: "Review Saved Options",
     scheduleThis: "Schedule Installation of This System",
     returnSaved: "Return to Saved Options",
     seeMore: "See More Options",
@@ -165,7 +165,7 @@ const T = {
     prepBullet2: "Verificando requisitos de instalación",
     prepBullet3: "Preparando opciones de precios",
     almostReady: "Casi listo...",
-    estimateReady: "Su Estimado de AC Está Listo",
+    estimateReady: "Por Favor Elija Una Marca",
     recommendedSystem: "Sistema Recomendado",
     priceRangeDesc: "Este rango se basa en los detalles de su hogar y los requisitos estándar de reemplazo.",
     chooseBrandFamily: "Elegir Familia de Marca",
@@ -184,7 +184,7 @@ const T = {
     recommendationTitle: "Sus Recomendaciones de Sistema",
     bestValue: "Mejor Valor", bestEfficiency: "Mejor Eficiencia",
     seer2Label: "SEER2", tonsLabel: "Toneladas", priceLabel: "Precio Instalado",
-    saveOption: "Guardar Esta Opción", savedOptions: "Revisar Opciones Guardadas",
+    saveOption: "Guardar Esta Opción", saved: "Guardado", savedOptions: "Revisar Opciones Guardadas",
     scheduleThis: "Programar Instalación de Este Sistema",
     returnSaved: "Volver a Opciones Guardadas",
     seeMore: "Ver Más Opciones",
@@ -536,7 +536,7 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
           {t.scheduleThis}
         </BlueBtn>
         <WhiteBtn onClick={() => onSave(eq)} style={{ flex: 1, padding: "11px 12px", fontSize: 12, opacity: saved ? 0.5 : 1 }}>
-          {saved ? "✓ Saved" : t.saveOption}
+          {saved ? (lang === "es" ? "✓ Guardado" : "✓ Saved") : t.saveOption}
         </WhiteBtn>
       </div>
     </div>
@@ -709,21 +709,75 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
     );
   };
 
-  // When user selects a suggestion
+  // When user selects a suggestion - auto advances
   const handleSelect = (prediction) => {
     setAddr(prediction.description);
     setSuggestions([]);
     setSelected(prediction);
     // Reset session token after selection
-    sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+    if (window.google) {
+      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+    }
+    // Auto-trigger find after selection for smoother UX
+    setTimeout(() => {
+      getPlaceDetails(prediction.place_id, prediction.description);
+    }, 300);
+  };
+
+  const getPlaceDetails = (placeId, fullAddress) => {
+    if (!window.google) {
+      // Fallback if Google Maps not loaded
+      onFound({ ...MOCK_PROPERTY, address: fullAddress });
+      return;
+    }
+    setBusy(true);
+    // Use Places Details to get address components
+    const service = new window.google.maps.places.PlacesService(
+      document.createElement("div")
+    );
+    service.getDetails(
+      { placeId, fields: ["address_components", "formatted_address", "geometry"] },
+      (place, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
+          // Extract address components
+          const get = (type) => {
+            const comp = place.address_components?.find(c => c.types.includes(type));
+            return comp?.long_name || "";
+          };
+          const streetNum = get("street_number");
+          const streetName = get("route");
+          const city = get("locality") || get("sublocality");
+          const state = get("administrative_area_level_1");
+          const zip = get("postal_code");
+          const fullAddr = place.formatted_address || fullAddress;
+
+          // For now use mock property data with real address
+          // Will be replaced with Florida property appraiser API
+          onFound({
+            ...MOCK_PROPERTY,
+            address: fullAddr,
+            city, state, zip,
+            lat: place.geometry?.location?.lat(),
+            lng: place.geometry?.location?.lng(),
+          });
+        } else {
+          onFound({ ...MOCK_PROPERTY, address: fullAddress });
+        }
+        setBusy(false);
+      }
+    );
   };
 
   const find = async () => {
     if (!addr.trim()) return;
-    setBusy(true);
-    await new Promise(r => setTimeout(r, 2000));
-    setBusy(false);
-    onFound({ ...MOCK_PROPERTY, address: addr });
+    if (selected) {
+      getPlaceDetails(selected.place_id, selected.description);
+    } else {
+      setBusy(true);
+      await new Promise(r => setTimeout(r, 1500));
+      setBusy(false);
+      onFound({ ...MOCK_PROPERTY, address: addr });
+    }
   };
 
   // Fallback: if Maps not loaded, show manual input with city/zip fields
@@ -825,7 +879,7 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", display: "flex", flexDirection: "column", gap: 10 }}>
         <BlueBtn
           onClick={find}
-          disabled={busy || !addr.trim() || suggestions.length > 0}
+          disabled={busy || !addr.trim()}
         >
           {busy ? "🔍 Searching..." : t.findBtn}
         </BlueBtn>
@@ -1052,7 +1106,7 @@ function S10_Preparing({ brand, t, onDone }) {
 }
 
 // ── SCREEN 11: ESTIMATE READY ─────────────────────────────────────────────────
-function S11_EstimateReady({ brand, t, quote, onChooseFamily, onViewDetails, onCG }) {
+function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG }) {
   const { property, answers, adderTotal, allEquipment } = quote;
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
   const priceRange = QuoteEngine.getPriceRange(allEquipment, adderTotal);
@@ -1086,7 +1140,6 @@ function S11_EstimateReady({ brand, t, quote, onChooseFamily, onViewDetails, onC
       </div>
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         <BlueBtn onClick={onChooseFamily}>{t.chooseBrandFamily}</BlueBtn>
-        <WhiteBtn onClick={onViewDetails}>{t.viewDetails}</WhiteBtn>
       </div>
     </Shell>
   );
@@ -1235,18 +1288,12 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
             ))}
           </div>
         )}
-        {/* Other systems */}
+        {/* See More Options button - leads back to brand selection */}
         {equipment.length > 0 && (
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: C.navy, marginBottom: 8, opacity: 0.7 }}>OTHER AVAILABLE SYSTEMS</div>
-            {equipment.map(eq => (
-              <EquipmentCard key={eq.id} eq={eq} adders={adderTotal} t={t}
-                recommended={false}
-                saved={savedIds.includes(eq.id)}
-                onSave={toggleSave}
-                onSelect={onSelect}
-              />
-            ))}
+          <div style={{ textAlign: "center", marginTop: 8, marginBottom: 8 }}>
+            <WhiteBtn onClick={onBack} style={{ maxWidth: 280, margin: "0 auto" }}>
+              {t.seeMore} →
+            </WhiteBtn>
           </div>
         )}
         {recommended.length === 0 && equipment.length === 0 && (
@@ -1511,7 +1558,6 @@ export default function App() {
 
       {screen === "s11" && quote && <S11_EstimateReady brand={brand} t={t} quote={quote}
         onChooseFamily={() => go("s12")}
-        onViewDetails={() => go("s12")}
         onCG={() => setShowCG(true)} />}
 
       {screen === "s12" && <S12_BrandFamily brand={brand} t={t} quote={quote}
