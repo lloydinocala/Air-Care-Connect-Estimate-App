@@ -603,7 +603,7 @@ function S1_Landing({ brand, t, onStart, onCG }) {
         <ShieldLogo brand={brand} size={56} />
         <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: "12px 0 0", lineHeight: 1.25 }}>{t.taglineH}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779650456998_image.png">
+      <HeroCard imgSrc="/family-hero.jpg">
         <div style={{ background: C.white, padding: "14px 18px" }}>
           <p style={{ margin: "0 0 10px", fontWeight: 800, color: C.navy, fontSize: 14, textAlign: "center", lineHeight: 1.5 }}>
             Answer a few simple questions and get a realistic,<br />no-pressure estimate based on your home.
@@ -632,7 +632,7 @@ function S1_Landing({ brand, t, onStart, onCG }) {
   );
 }
 
-// ── GOOGLE PLACES AUTOCOMPLETE LOADER ────────────────────────────────────────
+// ── GOOGLE MAPS CONFIG ───────────────────────────────────────────────────────
 const GOOGLE_MAPS_KEY = "AIzaSyCD_C5qj6KH1qDXB7r-qcubGwSyrFZ66Tk"; 
 let googleMapsLoaded = false;
 let googleMapsLoading = false;
@@ -660,18 +660,19 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
   const [suggestions, setSuggestions] = useState([]);
   const [busy, setBusy] = useState(false);
   const [mapsReady, setMapsReady] = useState(false);
-  const svcRef = useRef(null);
-  const tokenRef = useRef(null);
   const debounceRef = useRef(null);
+  const sessionTokenRef = useRef(null);
 
+  // Load Google Maps with new Places API
   useEffect(() => {
     const tryInit = () => {
+      if (window.google?.maps?.places?.AutocompleteSuggestion) {
+        setMapsReady(true);
+        return true;
+      }
+      // Fall back to checking for old API
       if (window.google?.maps?.places) {
-        try {
-          svcRef.current = new window.google.maps.places.AutocompleteService();
-          tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-          setMapsReady(true);
-        } catch(e) {}
+        setMapsReady(true);
         return true;
       }
       return false;
@@ -682,7 +683,8 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
     if (!document.getElementById("gmap-script")) {
       const script = document.createElement("script");
       script.id = "gmap-script";
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places`;
+      // Load with new Places API (v=beta for new API)
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places&v=beta`;
       script.async = true;
       document.head.appendChild(script);
     }
@@ -693,61 +695,161 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
     return () => clearInterval(interval);
   }, []);
 
-  const handleInput = (e) => {
+  const getNewSessionToken = async () => {
+    if (window.google?.maps?.places?.AutocompleteSessionToken) {
+      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+    }
+  };
+
+  const handleInput = async (e) => {
     const val = e.target.value;
     setAddr(val);
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!val || val.length < 3 || !mapsReady || !svcRef.current) {
+    if (!val || val.length < 3 || !mapsReady) {
       setSuggestions([]);
       return;
     }
-    debounceRef.current = setTimeout(() => {
-      svcRef.current.getPlacePredictions(
-        { input: val, sessionToken: tokenRef.current, componentRestrictions: { country: "us" }, types: ["address"] },
-        (predictions, status) => {
-          setSuggestions(status === "OK" && predictions ? predictions.slice(0, 5) : []);
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        // Try new API first
+        if (window.google?.maps?.places?.AutocompleteSuggestion) {
+          if (!sessionTokenRef.current) await getNewSessionToken();
+          
+          const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+            input: val,
+            sessionToken: sessionTokenRef.current,
+            includedRegionCodes: ["us"],
+            includedPrimaryTypes: ["street_address", "premise"],
+          });
+          setSuggestions(suggestions || []);
+        } else if (window.google?.maps?.places?.AutocompleteService) {
+          // Fall back to old API
+          const svc = new window.google.maps.places.AutocompleteService();
+          svc.getPlacePredictions(
+            { input: val, componentRestrictions: { country: "us" }, types: ["address"] },
+            (predictions, status) => {
+              setSuggestions(status === "OK" ? (predictions || []).map(p => ({ 
+                placePrediction: { 
+                  text: { text: p.description },
+                  mainText: { text: p.structured_formatting?.main_text || p.description },
+                  secondaryText: { text: p.structured_formatting?.secondary_text || "" },
+                  placeId: p.place_id,
+                  toPlace: () => ({ id: p.place_id })
+                }
+              })) : []);
+            }
+          );
         }
-      );
+      } catch(e) {
+        console.warn("Autocomplete error:", e);
+        setSuggestions([]);
+      }
     }, 350);
   };
 
-  const resolvePlace = (placeId, description) => {
+  const resolveSelection = async (suggestion) => {
     setSuggestions([]);
-    setAddr(description);
     setBusy(true);
-    if (!window.google?.maps?.places) {
-      onFound({ ...MOCK_PROPERTY, address: description });
-      setBusy(false);
-      return;
-    }
-    const svc = new window.google.maps.places.PlacesService(document.createElement("div"));
-    svc.getDetails(
-      { placeId, fields: ["address_components", "formatted_address", "geometry"] },
-      (place, status) => {
-        setBusy(false);
-        const get = (type) => place?.address_components?.find(c => c.types.includes(type))?.long_name || "";
-        onFound({
-          ...MOCK_PROPERTY,
-          address: place?.formatted_address || description,
-          city: get("locality") || get("sublocality"),
-          state: get("administrative_area_level_1"),
-          zip: get("postal_code"),
-          lat: place?.geometry?.location?.lat(),
-          lng: place?.geometry?.location?.lng(),
+    
+    try {
+      let address = "";
+      let lat = null, lng = null, city = "", state = "", zip = "";
+
+      // New API path
+      if (suggestion.placePrediction?.toPlace) {
+        const place = suggestion.placePrediction.toPlace();
+        address = suggestion.placePrediction.text?.text || "";
+        setAddr(address);
+        
+        await place.fetchFields({
+          fields: ["displayName", "formattedAddress", "addressComponents", "location"]
         });
-        if (window.google?.maps?.places) {
-          tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-        }
+
+        address = place.formattedAddress || address;
+        lat = place.location?.lat();
+        lng = place.location?.lng();
+        
+        place.addressComponents?.forEach(comp => {
+          if (comp.types.includes("locality")) city = comp.longText;
+          if (comp.types.includes("administrative_area_level_1")) state = comp.shortText;
+          if (comp.types.includes("postal_code")) zip = comp.longText;
+        });
+
+        // Reset session token after place selection
+        await getNewSessionToken();
       }
-    );
+      // Old API fallback path  
+      else if (suggestion.placePrediction?.placeId) {
+        const placeId = suggestion.placePrediction.placeId;
+        address = suggestion.placePrediction.text?.text || "";
+        setAddr(address);
+
+        await new Promise((resolve) => {
+          const svc = new window.google.maps.places.PlacesService(document.createElement("div"));
+          svc.getDetails(
+            { placeId, fields: ["formatted_address", "address_components", "geometry"] },
+            (place, status) => {
+              if (status === "OK" && place) {
+                address = place.formatted_address || address;
+                lat = place.geometry?.location?.lat();
+                lng = place.geometry?.location?.lng();
+                place.address_components?.forEach(comp => {
+                  if (comp.types.includes("locality")) city = comp.long_name;
+                  if (comp.types.includes("administrative_area_level_1")) state = comp.short_name;
+                  if (comp.types.includes("postal_code")) zip = comp.long_name;
+                });
+              }
+              resolve();
+            }
+          );
+        });
+      }
+
+      setAddr(address);
+      onFound({ ...MOCK_PROPERTY, address, city, state, zip, lat, lng });
+    } catch(e) {
+      console.warn("Place resolution error:", e);
+      onFound({ ...MOCK_PROPERTY, address: addr });
+    }
+    setBusy(false);
   };
 
   const handleManualFind = async () => {
     if (!addr.trim()) return;
     setBusy(true);
-    await new Promise(r => setTimeout(r, 1200));
+    // Try geocoding the manually entered address
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${GOOGLE_MAPS_KEY}&components=country:US`;
+      const r = await fetch(url);
+      const data = await r.json();
+      if (data.status === "OK" && data.results[0]) {
+        const result = data.results[0];
+        const get = (type) => result.address_components?.find(c => c.types.includes(type))?.long_name || "";
+        const getShort = (type) => result.address_components?.find(c => c.types.includes(type))?.short_name || "";
+        onFound({
+          ...MOCK_PROPERTY,
+          address: result.formatted_address,
+          city: get("locality"),
+          state: getShort("administrative_area_level_1"),
+          zip: get("postal_code"),
+          lat: result.geometry.location.lat,
+          lng: result.geometry.location.lng,
+        });
+        setBusy(false);
+        return;
+      }
+    } catch(e) { console.warn("Geocode error:", e); }
     setBusy(false);
     onFound({ ...MOCK_PROPERTY, address: addr });
+  };
+
+  // Get display text for suggestion
+  const getSuggestionText = (s) => {
+    const main = s.placePrediction?.mainText?.text || s.placePrediction?.text?.text || "";
+    const secondary = s.placePrediction?.secondaryText?.text || "";
+    return { main, secondary };
   };
 
   return (
@@ -755,7 +857,7 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 26, fontWeight: 900, color: C.navy, margin: 0 }}>{t.findHome}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779650570802_image.png" overlayText={t.findHomeDesc} />
+      <HeroCard imgSrc="/house-hero.jpg" overlayText={t.findHomeDesc} />
       <div style={{ padding: "18px 20px 0" }}>
         <div style={{ fontSize: 11, fontWeight: 900, color: C.navy, letterSpacing: 2, marginBottom: 8, textAlign: "center" }}>
           📍 {t.addressLabel}
@@ -781,25 +883,25 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
               background: C.white, borderRadius: "0 0 12px 12px",
               boxShadow: SHADOW, border: `2px solid ${C.blue}`, borderTop: "none",
             }}>
-              {suggestions.map((s, i) => (
-                <button key={s.place_id}
-                  onMouseDown={e => { e.preventDefault(); resolvePlace(s.place_id, s.description); }}
-                  style={{
-                    width: "100%", padding: "11px 16px", background: "none", border: "none",
-                    borderBottom: i < suggestions.length - 1 ? `1px solid ${C.gray}` : "none",
-                    cursor: "pointer", textAlign: "left", fontFamily: FONT,
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = "#f0faff"}
-                  onMouseLeave={e => e.currentTarget.style.background = "none"}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>
-                    📍 {s.structured_formatting?.main_text || s.description}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                    {s.structured_formatting?.secondary_text || ""}
-                  </div>
-                </button>
-              ))}
+              {suggestions.map((s, i) => {
+                const { main, secondary } = getSuggestionText(s);
+                return (
+                  <button key={i}
+                    onMouseDown={e => { e.preventDefault(); resolveSelection(s); }}
+                    style={{
+                      width: "100%", padding: "11px 16px", background: "none",
+                      border: "none",
+                      borderBottom: i < suggestions.length - 1 ? `1px solid ${C.gray}` : "none",
+                      cursor: "pointer", textAlign: "left", fontFamily: FONT,
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#f0faff"}
+                    onMouseLeave={e => e.currentTarget.style.background = "none"}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>📍 {main}</div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{secondary}</div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -894,18 +996,54 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
     ? `https://maps.googleapis.com/maps/api/streetview?size=600x280&location=${encodeURIComponent(propData.address)}&fov=90&heading=0&pitch=0&key=${GOOGLE_MAPS_KEY}`
     : null;
 
-  // Fetch verified property data on mount
+  // Fetch real property data from RentCast via secure serverless function
   useEffect(() => {
     const load = async () => {
       setLoadingProp(true);
-      const verified = await fetchPropertyData(
-        property.address,
-        property.lat,
-        property.lng,
-        GOOGLE_MAPS_KEY
-      );
-      if (verified) {
-        setPropData(p => ({ ...p, ...verified }));
+      try {
+        const params = new URLSearchParams();
+        params.append('address', property.address);
+        if (property.city)  params.append('city', property.city);
+        if (property.state) params.append('state', property.state);
+        if (property.zip)   params.append('zip', property.zip);
+
+        const r = await fetch(`/api/property?${params.toString()}`);
+
+        if (r.ok) {
+          const data = await r.json();
+          // Map property type to our display values
+          const typeMap = {
+            'Single Family': 'Single Family Home',
+            'Manufactured': 'Manufactured Home',
+            'Mobile Home': 'Manufactured Home',
+            'Condo': 'Condo / Apartment',
+            'Townhouse': 'Townhouse',
+            'Multi Family': 'Multi-Family',
+          };
+          const mappedType = typeMap[data.propertyType] || data.propertyType || property.type;
+
+          setPropData(p => ({
+            ...p,
+            address:  data.address  || p.address,
+            city:     data.city     || p.city,
+            state:    data.state    || p.state,
+            zip:      data.zip      || p.zip,
+            county:   data.county   || p.county,
+            beds:     data.beds     ?? p.beds,
+            baths:    data.baths    ?? p.baths,
+            sqft:     data.sqft     ?? p.sqft,
+            year:     data.yearBuilt ?? p.year,
+            type:     mappedType,
+            stories:  data.stories  || p.stories,
+            lat:      data.lat      || p.lat,
+            lng:      data.lng      || p.lng,
+            rentcastFound: true,
+          }));
+        } else {
+          console.warn("RentCast lookup failed — using address data from Google");
+        }
+      } catch(e) {
+        console.warn("Property lookup error:", e);
       }
       setLoadingProp(false);
     };
@@ -976,7 +1114,7 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
         </p>
         {loadingProp && (
           <p style={{ margin: 0, fontSize: 12, color: C.blue, fontWeight: 600 }}>
-            ⟳ Verifying property details...
+            ⟳ Looking up your home details...
           </p>
         )}
         <p style={{ margin: "4px 0 0", fontWeight: 700, fontSize: 14, color: C.black, lineHeight: 1.5 }}>
@@ -987,7 +1125,7 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
       {/* Note about property details */}
       <div style={{ margin: "10px 20px 0", background: "#f0f9ff", borderRadius: 12, padding: "10px 14px", border: `1px solid ${C.blue}` }}>
         <p style={{ margin: 0, fontSize: 12, color: C.navy, fontWeight: 600, textAlign: "center", lineHeight: 1.5 }}>
-          💡 Home details shown are estimates. If anything looks wrong, tap <strong>"Edit Home Details"</strong> to correct them.
+          💡 Home details are pulled from public property records. If anything looks incorrect, tap <strong>"Edit Home Details"</strong> to make corrections before we calculate your estimate.
         </p>
       </div>
 
@@ -1014,7 +1152,7 @@ function S4_Intent({ brand, t, onSelect, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 23, fontWeight: 900, color: C.navy, margin: 0 }}>{t.whatEstimate}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779650937591_image.png" />
+      <HeroCard imgSrc="/hvac-lineup.jpg" />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         {opts.map(o => (
           <div key={o.id} style={{ textAlign: "center" }}>
@@ -1041,7 +1179,7 @@ function S5_CoolWell({ brand, t, onSelect, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.coolWell}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779649139876_image.png" overlayText={t.coolWellDesc} />
+      <HeroCard imgSrc="/old-condenser.jpg" overlayText={t.coolWellDesc} />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         {opts.map(o => (
           <div key={o.id}>
@@ -1061,7 +1199,7 @@ function S6_FloodZone({ brand, t, onSelect, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.floodZone}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779649131169_image.png" overlayText={t.floodDesc} />
+      <HeroCard imgSrc="/flood-stand.jpg" overlayText={t.floodDesc} />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         <BlueBtn onClick={() => onSelect("yes")}>{t.floodYes}</BlueBtn>
         <BlueBtn onClick={() => onSelect("no")}>{t.floodNo}</BlueBtn>
@@ -1079,7 +1217,7 @@ function S7_SystemAge({ brand, t, onSelect, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 23, fontWeight: 900, color: C.navy, margin: 0 }}>{t.systemAge}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779649109647_image.png" overlayText={t.systemAgeDesc} />
+      <HeroCard imgSrc="/tech-dataplate.jpg" overlayText={t.systemAgeDesc} />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         <BlueBtn onClick={() => onSelect("new")}>{t.ageNew}</BlueBtn>
         <BlueBtn onClick={() => onSelect("old")}>{t.ageOld}</BlueBtn>
@@ -1097,7 +1235,7 @@ function S8_HOA({ brand, t, onSelect, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>{t.hoaTitle}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779649147043_image.png" overlayText={t.hoaDesc} />
+      <HeroCard imgSrc="/hoa-blocks.jpg" overlayText={t.hoaDesc} />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         <WhiteBtn onClick={() => onSelect("yes")}>{t.hoaYes}</WhiteBtn>
         <BlueBtn onClick={() => onSelect("no")}>{t.hoaNo}</BlueBtn>
@@ -1120,7 +1258,7 @@ function S9_SystemType({ brand, t, onSelect, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>{t.systemTypeTitle}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779651151322_image.png" />
+      <HeroCard imgSrc="/goodman-trio.jpg" />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         {opts.map(o => (
           <div key={o.id} style={{ textAlign: "center" }}>
@@ -1153,7 +1291,7 @@ function S10_Preparing({ brand, t, onDone }) {
         <span style={{ fontSize: 11, fontWeight: 900, color: C.blue, letterSpacing: 2, textTransform: "uppercase" }}>{brand.name}</span>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: "8px 0 0" }}>{t.preparing}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779649157038_image.png" overlayText={t.preparingDesc} />
+      <HeroCard imgSrc="/package-unit.jpg" overlayText={t.preparingDesc} />
       <div style={{ padding: "24px 20px 0", display: "flex", flexDirection: "column", gap: 16 }}>
         {bullets.map((b, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, opacity: step > i ? 1 : 0.25, transition: "opacity 0.5s", fontSize: 15, fontWeight: 700, color: C.navy }}>
@@ -1229,7 +1367,7 @@ function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseFamilyTitle}</h1>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779649173072_image.png" overlayText={t.chooseFamilyDesc} />
+      <HeroCard imgSrc="/three-condensers.jpg" overlayText={t.chooseFamilyDesc} />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         {families.map(f => (
           <div key={f.id} style={{ textAlign: "center" }}>
@@ -1270,7 +1408,7 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG 
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseBrandTitle}</h1>
         <p style={{ fontSize: 13, color: C.navy, fontWeight: 600, margin: "6px 0 0" }}>{t.chooseBrandDesc}</p>
       </div>
-      <HeroCard imgSrc="/mnt/user-data/uploads/1779649180721_image.png" />
+      <HeroCard imgSrc="/brands-outdoor.jpg" />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 10 }}>
         <NavyBtn onClick={() => onSelect("recommended")}>{t.showRecommended} &gt;</NavyBtn>
         {loading ? (
