@@ -684,7 +684,7 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
       const script = document.createElement("script");
       script.id = "gmap-script";
       // Load with new Places API (v=beta for new API)
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places&v=beta`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places`;
       script.async = true;
       document.head.appendChild(script);
     }
@@ -711,37 +711,34 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
       return;
     }
 
-    debounceRef.current = setTimeout(async () => {
+    debounceRef.current = setTimeout(() => {
       try {
-        // Try new API first
-        if (window.google?.maps?.places?.AutocompleteSuggestion) {
-          if (!sessionTokenRef.current) await getNewSessionToken();
-          
-          const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-            input: val,
-            sessionToken: sessionTokenRef.current,
-            includedRegionCodes: ["us"],
-            includedPrimaryTypes: ["street_address", "premise"],
-          });
-          setSuggestions(suggestions || []);
-        } else if (window.google?.maps?.places?.AutocompleteService) {
-          // Fall back to old API
-          const svc = new window.google.maps.places.AutocompleteService();
-          svc.getPlacePredictions(
-            { input: val, componentRestrictions: { country: "us" }, types: ["address"] },
-            (predictions, status) => {
-              setSuggestions(status === "OK" ? (predictions || []).map(p => ({ 
-                placePrediction: { 
+        if (!window.google?.maps?.places?.AutocompleteService) {
+          console.warn("AutocompleteService not ready");
+          return;
+        }
+        const svc = new window.google.maps.places.AutocompleteService();
+        svc.getPlacePredictions(
+          { 
+            input: val, 
+            componentRestrictions: { country: "us" }, 
+            types: ["address"],
+          },
+          (predictions, status) => {
+            if (status === "OK" && predictions) {
+              setSuggestions(predictions.map(p => ({
+                placePrediction: {
                   text: { text: p.description },
                   mainText: { text: p.structured_formatting?.main_text || p.description },
                   secondaryText: { text: p.structured_formatting?.secondary_text || "" },
                   placeId: p.place_id,
-                  toPlace: () => ({ id: p.place_id })
                 }
-              })) : []);
+              })));
+            } else {
+              setSuggestions([]);
             }
-          );
-        }
+          }
+        );
       } catch(e) {
         console.warn("Autocomplete error:", e);
         setSuggestions([]);
@@ -753,65 +750,43 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
     setSuggestions([]);
     setBusy(true);
     
+    const placeId = suggestion.placePrediction?.placeId;
+    const fallbackAddress = suggestion.placePrediction?.text?.text || addr;
+    setAddr(fallbackAddress);
+
+    if (!placeId || !window.google?.maps?.places?.PlacesService) {
+      onFound({ ...MOCK_PROPERTY, address: fallbackAddress });
+      setBusy(false);
+      return;
+    }
+
     try {
-      let address = "";
-      let lat = null, lng = null, city = "", state = "", zip = "";
-
-      // New API path
-      if (suggestion.placePrediction?.toPlace) {
-        const place = suggestion.placePrediction.toPlace();
-        address = suggestion.placePrediction.text?.text || "";
-        setAddr(address);
-        
-        await place.fetchFields({
-          fields: ["displayName", "formattedAddress", "addressComponents", "location"]
-        });
-
-        address = place.formattedAddress || address;
-        lat = place.location?.lat();
-        lng = place.location?.lng();
-        
-        place.addressComponents?.forEach(comp => {
-          if (comp.types.includes("locality")) city = comp.longText;
-          if (comp.types.includes("administrative_area_level_1")) state = comp.shortText;
-          if (comp.types.includes("postal_code")) zip = comp.longText;
-        });
-
-        // Reset session token after place selection
-        await getNewSessionToken();
-      }
-      // Old API fallback path  
-      else if (suggestion.placePrediction?.placeId) {
-        const placeId = suggestion.placePrediction.placeId;
-        address = suggestion.placePrediction.text?.text || "";
-        setAddr(address);
-
-        await new Promise((resolve) => {
-          const svc = new window.google.maps.places.PlacesService(document.createElement("div"));
-          svc.getDetails(
-            { placeId, fields: ["formatted_address", "address_components", "geometry"] },
-            (place, status) => {
-              if (status === "OK" && place) {
-                address = place.formatted_address || address;
-                lat = place.geometry?.location?.lat();
-                lng = place.geometry?.location?.lng();
-                place.address_components?.forEach(comp => {
-                  if (comp.types.includes("locality")) city = comp.long_name;
-                  if (comp.types.includes("administrative_area_level_1")) state = comp.short_name;
-                  if (comp.types.includes("postal_code")) zip = comp.long_name;
-                });
-              }
-              resolve();
+      await new Promise((resolve) => {
+        const svc = new window.google.maps.places.PlacesService(document.createElement("div"));
+        svc.getDetails(
+          { placeId, fields: ["formatted_address", "address_components", "geometry"] },
+          (place, status) => {
+            if (status === "OK" && place) {
+              const get = (type) => place.address_components?.find(c => c.types.includes(type))?.long_name || "";
+              const getShort = (type) => place.address_components?.find(c => c.types.includes(type))?.short_name || "";
+              const address = place.formatted_address || fallbackAddress;
+              const city = get("locality") || get("sublocality");
+              const state = getShort("administrative_area_level_1");
+              const zip = get("postal_code");
+              const lat = place.geometry?.location?.lat();
+              const lng = place.geometry?.location?.lng();
+              setAddr(address);
+              onFound({ ...MOCK_PROPERTY, address, city, state, zip, lat, lng });
+            } else {
+              onFound({ ...MOCK_PROPERTY, address: fallbackAddress });
             }
-          );
-        });
-      }
-
-      setAddr(address);
-      onFound({ ...MOCK_PROPERTY, address, city, state, zip, lat, lng });
+            resolve();
+          }
+        );
+      });
     } catch(e) {
       console.warn("Place resolution error:", e);
-      onFound({ ...MOCK_PROPERTY, address: addr });
+      onFound({ ...MOCK_PROPERTY, address: fallbackAddress });
     }
     setBusy(false);
   };
@@ -1017,12 +992,18 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
     const load = async () => {
       setLoadingProp(true);
       try {
+        // Send full formatted address - RentCast works best with complete address
+        const fullAddress = property.address || 
+          `${property.streetNumber || ''} ${property.streetName || ''}, ${property.city || ''}, ${property.state || 'FL'} ${property.zip || ''}`.trim();
+        
         const params = new URLSearchParams();
-        params.append('address', property.address);
-        if (property.city)  params.append('city', property.city);
-        if (property.state) params.append('state', property.state);
-        if (property.zip)   params.append('zip', property.zip);
+        params.append('address', fullAddress);
+        // Only add these if we have them AND they're not already in the address
+        if (property.city && !fullAddress.includes(property.city)) params.append('city', property.city);
+        if (property.state && !fullAddress.includes(property.state)) params.append('state', property.state);
+        if (property.zip && !fullAddress.includes(property.zip)) params.append('zip', property.zip);
 
+        console.log('RentCast lookup:', fullAddress);
         const r = await fetch(`/api/property?${params.toString()}`);
 
         if (r.ok) {
