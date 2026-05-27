@@ -1726,7 +1726,24 @@ export default function App() {
         onBack={() => go("s1")} onCG={() => setShowCG(true)} />}
 
       {screen === "s3" && <S3_ConfirmHome brand={brand} t={t} property={property}
-        onConfirm={(verified) => { if(verified) setProperty(verified); go("s4"); }}
+        onConfirm={(verified) => {
+          if (verified) {
+            setProperty(verified);
+            // Auto-detect home type from property data
+            const type = verified.type || "";
+            const isManufactured = type.toLowerCase().includes("manufactured") || 
+                                   type.toLowerCase().includes("mobile");
+            const isApt = type.toLowerCase().includes("condo") || 
+                          type.toLowerCase().includes("apartment") ||
+                          type.toLowerCase().includes("multi");
+            setAnswers(p => ({ 
+              ...p, 
+              detectedHomeType: isManufactured ? "manufactured" : isApt ? "apartment" : "site-built",
+              detectedSqft: verified.sqft || p.detectedSqft,
+            }));
+          }
+          go("s4");
+        }}
         onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} />}
 
       {screen === "s4" && <S4_Intent brand={brand} t={t}
