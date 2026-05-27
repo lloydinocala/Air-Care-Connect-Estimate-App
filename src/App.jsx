@@ -989,12 +989,28 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
   const [loadingProp, setLoadingProp] = useState(true);
   const [streetViewError, setStreetViewError] = useState(false);
 
-  // Build Street View URL
-  const streetViewUrl = propData?.lat && propData?.lng
-    ? `https://maps.googleapis.com/maps/api/streetview?size=600x280&location=${propData.lat},${propData.lng}&fov=90&heading=0&pitch=0&key=${GOOGLE_MAPS_KEY}`
-    : propData?.address
-    ? `https://maps.googleapis.com/maps/api/streetview?size=600x280&location=${encodeURIComponent(propData.address)}&fov=90&heading=0&pitch=0&key=${GOOGLE_MAPS_KEY}`
+  // Build Street View URL - prefer address string for best results
+  const streetViewUrl = propData?.address
+    ? `https://maps.googleapis.com/maps/api/streetview?size=600x300&location=${encodeURIComponent(propData.address)}&fov=80&heading=235&pitch=10&return_error_code=true&key=${GOOGLE_MAPS_KEY}`
+    : propData?.lat && propData?.lng
+    ? `https://maps.googleapis.com/maps/api/streetview?size=600x300&location=${propData.lat},${propData.lng}&fov=80&return_error_code=true&key=${GOOGLE_MAPS_KEY}`
     : null;
+
+  // Check Street View availability using metadata endpoint
+  const [streetViewChecked, setStreetViewChecked] = useState(false);
+  useEffect(() => {
+    if (!propData?.address && !propData?.lat) return;
+    const loc = propData.address
+      ? encodeURIComponent(propData.address)
+      : `${propData.lat},${propData.lng}`;
+    fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${loc}&key=${GOOGLE_MAPS_KEY}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.status !== "OK") setStreetViewError(true);
+        setStreetViewChecked(true);
+      })
+      .catch(() => { setStreetViewError(true); setStreetViewChecked(true); });
+  }, [propData.address]);
 
   // Fetch real property data from RentCast via secure serverless function
   useEffect(() => {
