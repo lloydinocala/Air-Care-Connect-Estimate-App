@@ -658,132 +658,97 @@ function loadGoogleMaps(callback) {
 function S2_Address({ brand, t, onFound, onBack, onCG }) {
   const [addr, setAddr] = useState("");
   const [suggestions, setSuggestions] = useState([]);
-  const [selected, setSelected] = useState(null);
   const [busy, setBusy] = useState(false);
   const [mapsReady, setMapsReady] = useState(false);
-  const inputRef = useRef(null);
-  const autocompleteRef = useRef(null);
-  const sessionTokenRef = useRef(null);
+  const svcRef = useRef(null);
+  const tokenRef = useRef(null);
+  const debounceRef = useRef(null);
 
-  // Load Google Maps
   useEffect(() => {
-    loadGoogleMaps(() => setMapsReady(true));
+    const tryInit = () => {
+      if (window.google?.maps?.places) {
+        try {
+          svcRef.current = new window.google.maps.places.AutocompleteService();
+          tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+          setMapsReady(true);
+        } catch(e) {}
+        return true;
+      }
+      return false;
+    };
+
+    if (tryInit()) return;
+
+    if (!document.getElementById("gmap-script")) {
+      const script = document.createElement("script");
+      script.id = "gmap-script";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places`;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    const interval = setInterval(() => {
+      if (tryInit()) clearInterval(interval);
+    }, 200);
+    return () => clearInterval(interval);
   }, []);
 
-  // Initialize autocomplete service
-  useEffect(() => {
-    if (!mapsReady || !window.google) return;
-    autocompleteRef.current = new window.google.maps.places.AutocompleteService();
-    sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-  }, [mapsReady]);
-
-  // Fetch suggestions as user types
   const handleInput = (e) => {
     const val = e.target.value;
     setAddr(val);
-    setSelected(null);
-
-    if (!val || val.length < 3 || !autocompleteRef.current) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!val || val.length < 3 || !mapsReady || !svcRef.current) {
       setSuggestions([]);
       return;
     }
-
-    autocompleteRef.current.getPlacePredictions(
-      {
-        input: val,
-        sessionToken: sessionTokenRef.current,
-        componentRestrictions: { country: "us" },
-        types: ["address"],
-        bounds: new window.google.maps.LatLngBounds(
-          { lat: 28.5, lng: -82.8 }, // SW Florida bounds
-          { lat: 29.8, lng: -81.5 }  // NE Florida bounds
-        ),
-      },
-      (predictions, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-          setSuggestions(predictions);
-        } else {
-          setSuggestions([]);
+    debounceRef.current = setTimeout(() => {
+      svcRef.current.getPlacePredictions(
+        { input: val, sessionToken: tokenRef.current, componentRestrictions: { country: "us" }, types: ["address"] },
+        (predictions, status) => {
+          setSuggestions(status === "OK" && predictions ? predictions.slice(0, 5) : []);
         }
-      }
-    );
+      );
+    }, 350);
   };
 
-  // When user selects a suggestion - auto advances
-  const handleSelect = (prediction) => {
-    setAddr(prediction.description);
+  const resolvePlace = (placeId, description) => {
     setSuggestions([]);
-    setSelected(prediction);
-    // Reset session token after selection
-    if (window.google) {
-      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-    }
-    // Auto-trigger find after selection for smoother UX
-    setTimeout(() => {
-      getPlaceDetails(prediction.place_id, prediction.description);
-    }, 300);
-  };
-
-  const getPlaceDetails = (placeId, fullAddress) => {
-    if (!window.google) {
-      // Fallback if Google Maps not loaded
-      onFound({ ...MOCK_PROPERTY, address: fullAddress });
+    setAddr(description);
+    setBusy(true);
+    if (!window.google?.maps?.places) {
+      onFound({ ...MOCK_PROPERTY, address: description });
+      setBusy(false);
       return;
     }
-    setBusy(true);
-    // Use Places Details to get address components
-    const service = new window.google.maps.places.PlacesService(
-      document.createElement("div")
-    );
-    service.getDetails(
+    const svc = new window.google.maps.places.PlacesService(document.createElement("div"));
+    svc.getDetails(
       { placeId, fields: ["address_components", "formatted_address", "geometry"] },
       (place, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
-          // Extract address components
-          const get = (type) => {
-            const comp = place.address_components?.find(c => c.types.includes(type));
-            return comp?.long_name || "";
-          };
-          const streetNum = get("street_number");
-          const streetName = get("route");
-          const city = get("locality") || get("sublocality");
-          const state = get("administrative_area_level_1");
-          const zip = get("postal_code");
-          const fullAddr = place.formatted_address || fullAddress;
-
-          // For now use mock property data with real address
-          // Will be replaced with Florida property appraiser API
-          onFound({
-            ...MOCK_PROPERTY,
-            address: fullAddr,
-            city, state, zip,
-            lat: place.geometry?.location?.lat(),
-            lng: place.geometry?.location?.lng(),
-          });
-        } else {
-          onFound({ ...MOCK_PROPERTY, address: fullAddress });
-        }
         setBusy(false);
+        const get = (type) => place?.address_components?.find(c => c.types.includes(type))?.long_name || "";
+        onFound({
+          ...MOCK_PROPERTY,
+          address: place?.formatted_address || description,
+          city: get("locality") || get("sublocality"),
+          state: get("administrative_area_level_1"),
+          zip: get("postal_code"),
+          lat: place?.geometry?.location?.lat(),
+          lng: place?.geometry?.location?.lng(),
+        });
+        if (window.google?.maps?.places) {
+          tokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+        }
       }
     );
   };
 
-  const find = async () => {
+  const handleManualFind = async () => {
     if (!addr.trim()) return;
-    if (selected) {
-      getPlaceDetails(selected.place_id, selected.description);
-    } else {
-      setBusy(true);
-      await new Promise(r => setTimeout(r, 1500));
-      setBusy(false);
-      onFound({ ...MOCK_PROPERTY, address: addr });
-    }
+    setBusy(true);
+    await new Promise(r => setTimeout(r, 1200));
+    setBusy(false);
+    onFound({ ...MOCK_PROPERTY, address: addr });
   };
-
-  // Fallback: if Maps not loaded, show manual input with city/zip fields
-  const [manualCity, setManualCity] = useState("");
-  const [manualZip, setManualZip] = useState("");
-  const fullAddress = mapsReady ? addr : `${addr}${manualCity ? ", " + manualCity : ""}, FL${manualZip ? " " + manualZip : ""}`;
 
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
@@ -795,37 +760,35 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
         <div style={{ fontSize: 11, fontWeight: 900, color: C.navy, letterSpacing: 2, marginBottom: 8, textAlign: "center" }}>
           📍 {t.addressLabel}
         </div>
-
-        {/* Address input with autocomplete */}
         <div style={{ position: "relative" }}>
           <input
-            ref={inputRef}
             value={addr}
-            onChange={mapsReady ? handleInput : e => setAddr(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && suggestions.length === 0 && find()}
+            onChange={handleInput}
+            onKeyDown={e => e.key === "Enter" && suggestions.length === 0 && handleManualFind()}
             placeholder={t.addressPlaceholder}
+            autoComplete="off"
             style={{
-              width: "100%", border: `2px solid ${C.blue}`, borderRadius: 12,
-              padding: "14px 16px", fontSize: 15, outline: "none", fontFamily: FONT,
-              boxSizing: "border-box", color: C.navy, fontWeight: 600,
-              background: C.white, boxShadow: SHADOW_SM,
+              width: "100%", border: `2px solid ${C.blue}`,
+              borderRadius: suggestions.length > 0 ? "12px 12px 0 0" : 12,
+              padding: "14px 16px", fontSize: 15, outline: "none",
+              fontFamily: FONT, boxSizing: "border-box", color: C.navy,
+              fontWeight: 600, background: C.white, boxShadow: SHADOW_SM,
             }}
           />
-
-          {/* Autocomplete dropdown */}
           {suggestions.length > 0 && (
             <div style={{
-              position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
-              background: C.white, borderRadius: 12, boxShadow: SHADOW,
-              border: `2px solid ${C.blue}`, overflow: "hidden", marginTop: 4,
+              position: "absolute", top: "100%", left: 0, right: 0, zIndex: 500,
+              background: C.white, borderRadius: "0 0 12px 12px",
+              boxShadow: SHADOW, border: `2px solid ${C.blue}`, borderTop: "none",
             }}>
               {suggestions.map((s, i) => (
-                <button key={s.place_id} onClick={() => handleSelect(s)} style={{
-                  width: "100%", padding: "12px 16px", background: "none",
-                  border: "none", borderBottom: i < suggestions.length - 1 ? `1px solid ${C.gray}` : "none",
-                  cursor: "pointer", textAlign: "left", fontFamily: FONT,
-                  transition: "background 0.15s",
-                }}
+                <button key={s.place_id}
+                  onMouseDown={e => { e.preventDefault(); resolvePlace(s.place_id, s.description); }}
+                  style={{
+                    width: "100%", padding: "11px 16px", background: "none", border: "none",
+                    borderBottom: i < suggestions.length - 1 ? `1px solid ${C.gray}` : "none",
+                    cursor: "pointer", textAlign: "left", fontFamily: FONT,
+                  }}
                   onMouseEnter={e => e.currentTarget.style.background = "#f0faff"}
                   onMouseLeave={e => e.currentTarget.style.background = "none"}
                 >
@@ -840,93 +803,201 @@ function S2_Address({ brand, t, onFound, onBack, onCG }) {
             </div>
           )}
         </div>
-
-        {/* Fallback manual city/zip if Google Maps not loaded */}
         {!mapsReady && (
-          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
-            <input
-              value={manualCity}
-              onChange={e => setManualCity(e.target.value)}
-              placeholder="City"
-              style={{
-                flex: 2, border: `2px solid ${C.blue}`, borderRadius: 12,
-                padding: "13px 14px", fontSize: 14, outline: "none",
-                fontFamily: FONT, color: C.navy, fontWeight: 600,
-                background: C.white, boxSizing: "border-box",
-              }}
-            />
-            <input
-              value={manualZip}
-              onChange={e => setManualZip(e.target.value)}
-              placeholder="ZIP"
-              maxLength={5}
-              style={{
-                flex: 1, border: `2px solid ${C.blue}`, borderRadius: 12,
-                padding: "13px 14px", fontSize: 14, outline: "none",
-                fontFamily: FONT, color: C.navy, fontWeight: 600,
-                background: C.white, boxSizing: "border-box",
-              }}
-            />
-          </div>
+          <p style={{ fontSize: 11, color: C.blue, margin: "6px 0 0", textAlign: "center", fontWeight: 600 }}>
+            ⟳ Loading address suggestions...
+          </p>
         )}
-
-        {/* Service area reminder */}
+        {mapsReady && addr.length >= 3 && suggestions.length === 0 && !busy && (
+          <p style={{ fontSize: 11, color: "#64748b", margin: "6px 0 0", textAlign: "center", fontWeight: 600 }}>
+            Include street number and city — e.g. "123 Main St, Ocala"
+          </p>
+        )}
         <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "8px 0 0", fontWeight: 600 }}>
           📍 We serve Marion, Lake, Sumter, Levy, Citrus & Alachua Counties + The Villages
         </p>
       </div>
-
       <div style={{ padding: "14px 20px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-        <BlueBtn
-          onClick={find}
-          disabled={busy || !addr.trim()}
-        >
-          {busy ? "🔍 Searching..." : t.findBtn}
+        <BlueBtn onClick={handleManualFind} disabled={busy || !addr.trim()}>
+          {busy ? "🔍 Finding your home..." : t.findBtn}
         </BlueBtn>
-        {suggestions.length > 0 && (
-          <p style={{ fontSize: 12, color: C.blue, textAlign: "center", fontWeight: 700, margin: 0 }}>
-            👆 Select your address from the list above
-          </p>
-        )}
         <TrustRow items={[t.noApptShort, t.noCallShort]} />
       </div>
     </Shell>
   );
 }
 
+// ── PROPERTY APPRAISER API ───────────────────────────────────────────────────
+const COUNTY_APIS = {
+  marion:  { name: "Marion County", url: "https://www.mcpafl.org" },
+  lake:    { name: "Lake County",   url: "https://www.lakecopropappr.com" },
+  sumter:  { name: "Sumter County", url: "https://www.sumterpa.com" },
+  citrus:  { name: "Citrus County", url: "https://www.pa.citrus.fl.us" },
+  levy:    { name: "Levy County",   url: "https://www.levypa.com" },
+  alachua: { name: "Alachua County",url: "https://www.acpafl.org" },
+};
+
+// Detect county from address string
+const detectCounty = (address) => {
+  const a = address.toLowerCase();
+  if (a.includes("ocala") || a.includes("marion")) return "marion";
+  if (a.includes("leesburg") || a.includes("clermont") || a.includes("lake county") || a.includes("tavares") || a.includes("eustis") || a.includes("mount dora")) return "lake";
+  if (a.includes("bushnell") || a.includes("wildwood") || a.includes("sumter") || a.includes("the villages") || a.includes("lady lake")) return "sumter";
+  if (a.includes("inverness") || a.includes("crystal river") || a.includes("citrus")) return "citrus";
+  if (a.includes("bronson") || a.includes("chiefland") || a.includes("levy")) return "levy";
+  if (a.includes("gainesville") || a.includes("alachua")) return "alachua";
+  return null;
+};
+
+// Fetch property data from county appraiser
+// Currently uses Geocoding API to get accurate location data
+// Full property appraiser integration requires county-specific API keys
+const fetchPropertyData = async (address, lat, lng, apiKey) => {
+  try {
+    // Use Google Geocoding to get precise address components
+    const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+    const r = await fetch(geocodeUrl);
+    const data = await r.json();
+
+    if (data.status === "OK" && data.results[0]) {
+      const result = data.results[0];
+      const get = (type) => result.address_components?.find(c => c.types.includes(type))?.long_name || "";
+      const getShort = (type) => result.address_components?.find(c => c.types.includes(type))?.short_name || "";
+
+      return {
+        address: result.formatted_address,
+        city: get("locality") || get("sublocality"),
+        state: getShort("administrative_area_level_1"),
+        zip: get("postal_code"),
+        county: get("administrative_area_level_2")?.replace(" County", "").toLowerCase(),
+        lat: result.geometry.location.lat,
+        lng: result.geometry.location.lng,
+        verified: true,
+      };
+    }
+  } catch(e) {
+    console.warn("Geocoding error:", e);
+  }
+  return null;
+};
+
 // ── SCREEN 3: CONFIRM HOME ────────────────────────────────────────────────────
 function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG }) {
+  const [propData, setPropData] = useState(property);
+  const [loadingProp, setLoadingProp] = useState(true);
+  const [streetViewError, setStreetViewError] = useState(false);
+
+  // Build Street View URL
+  const streetViewUrl = propData?.lat && propData?.lng
+    ? `https://maps.googleapis.com/maps/api/streetview?size=600x280&location=${propData.lat},${propData.lng}&fov=90&heading=0&pitch=0&key=${GOOGLE_MAPS_KEY}`
+    : propData?.address
+    ? `https://maps.googleapis.com/maps/api/streetview?size=600x280&location=${encodeURIComponent(propData.address)}&fov=90&heading=0&pitch=0&key=${GOOGLE_MAPS_KEY}`
+    : null;
+
+  // Fetch verified property data on mount
+  useEffect(() => {
+    const load = async () => {
+      setLoadingProp(true);
+      const verified = await fetchPropertyData(
+        property.address,
+        property.lat,
+        property.lng,
+        GOOGLE_MAPS_KEY
+      );
+      if (verified) {
+        setPropData(p => ({ ...p, ...verified }));
+      }
+      setLoadingProp(false);
+    };
+    load();
+  }, [property.address]);
+
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: 0 }}>{t.foundHome}</h1>
       </div>
+
+      {/* Street View / Home Image */}
       <div style={{ margin: "12px 20px 0", borderRadius: 20, overflow: "hidden", boxShadow: SHADOW }}>
-        <div style={{ height: 195, background: "linear-gradient(135deg,#64748b,#334155)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 64 }}>🏠</div>
-        <div style={{ background: "rgba(22,62,100,0.88)", padding: "12px 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 10 }}>
-            {[{ v: property.beds, l: t.beds }, { v: property.baths, l: t.baths }, { v: property.sqft.toLocaleString(), l: t.sqft }].map(({ v, l }) => (
-              <div key={l} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 900, color: C.white }}>{v}</div>
-                <div style={{ fontSize: 11, color: C.gray, fontWeight: 700 }}>{l}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-            <span style={{ background: C.blue, color: C.white, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>{property.type}</span>
-            <span style={{ background: "rgba(255,255,255,0.15)", color: C.white, borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 }}>{t.builtIn} {property.year}</span>
+        <div style={{ height: 200, position: "relative", background: "linear-gradient(135deg,#64748b,#334155)" }}>
+          {streetViewUrl && !streetViewError ? (
+            <img
+              src={streetViewUrl}
+              alt="Street view of property"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              onError={() => setStreetViewError(true)}
+            />
+          ) : (
+            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
+              <span style={{ fontSize: 56 }}>🏠</span>
+              <span style={{ color: C.gray, fontSize: 12, fontWeight: 600 }}>Street view not available</span>
+            </div>
+          )}
+
+          {/* Property stats overlay */}
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0,
+            background: "rgba(22,62,100,0.88)", padding: "10px 16px",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
+              {[
+                { v: propData.beds, l: t.beds },
+                { v: propData.baths, l: t.baths },
+                { v: propData.sqft?.toLocaleString(), l: t.sqft },
+              ].map(({ v, l }) => (
+                <div key={l} style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{v || "—"}</div>
+                  <div style={{ fontSize: 11, color: C.gray, fontWeight: 700 }}>{l}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ background: C.blue, color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+                {propData.type}
+              </span>
+              <span style={{ background: "rgba(255,255,255,0.15)", color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+                {t.builtIn} {propData.year}
+              </span>
+              {propData.county && (
+                <span style={{ background: "rgba(255,255,255,0.15)", color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+                  {propData.county.charAt(0).toUpperCase() + propData.county.slice(1)} County
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Address */}
       <div style={{ padding: "12px 20px 0", textAlign: "center" }}>
-        <p style={{ margin: "0 0 4px", fontWeight: 900, fontSize: 15, color: C.navy }}>{property.address}</p>
-        <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: C.black, lineHeight: 1.5 }}>{t.confirmDesc}</p>
+        <p style={{ margin: "0 0 4px", fontWeight: 900, fontSize: 15, color: C.navy }}>
+          {propData.address}
+        </p>
+        {loadingProp && (
+          <p style={{ margin: 0, fontSize: 12, color: C.blue, fontWeight: 600 }}>
+            ⟳ Verifying property details...
+          </p>
+        )}
+        <p style={{ margin: "4px 0 0", fontWeight: 700, fontSize: 14, color: C.black, lineHeight: 1.5 }}>
+          {t.confirmDesc}
+        </p>
       </div>
+
+      {/* Note about property details */}
+      <div style={{ margin: "10px 20px 0", background: "#f0f9ff", borderRadius: 12, padding: "10px 14px", border: `1px solid ${C.blue}` }}>
+        <p style={{ margin: 0, fontSize: 12, color: C.navy, fontWeight: 600, textAlign: "center", lineHeight: 1.5 }}>
+          💡 Home details shown are estimates. If anything looks wrong, tap <strong>"Edit Home Details"</strong> to correct them.
+        </p>
+      </div>
+
       <div style={{ padding: "14px 20px 0", display: "flex", gap: 12 }}>
-        <BlueBtn onClick={onConfirm} style={{ flex: 1 }}>{t.confirmBtn}</BlueBtn>
+        <BlueBtn onClick={() => onConfirm(propData)} style={{ flex: 1 }}>{t.confirmBtn}</BlueBtn>
         <WhiteBtn onClick={onEdit} style={{ flex: 1 }}>{t.editBtn}</WhiteBtn>
       </div>
-      <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
+      <div style={{ padding: "10px 20px 0" }}>
+        <TrustRow items={[t.noApptShort, t.noCallShort]} />
+      </div>
     </Shell>
   );
 }
@@ -1519,7 +1590,8 @@ export default function App() {
         onBack={() => go("s1")} onCG={() => setShowCG(true)} />}
 
       {screen === "s3" && <S3_ConfirmHome brand={brand} t={t} property={property}
-        onConfirm={() => go("s4")} onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} />}
+        onConfirm={(verified) => { if(verified) setProperty(verified); go("s4"); }}
+        onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} />}
 
       {screen === "s4" && <S4_Intent brand={brand} t={t}
         onSelect={id => {
