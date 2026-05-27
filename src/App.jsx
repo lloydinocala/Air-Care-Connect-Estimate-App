@@ -633,7 +633,8 @@ function S1_Landing({ brand, t, onStart, onCG }) {
 }
 
 // ── GOOGLE MAPS CONFIG ───────────────────────────────────────────────────────
-const GOOGLE_MAPS_KEY = "AIzaSyCD_C5qj6KH1qDXB7r-qcubGwSyrFZ66Tk"; 
+const GOOGLE_MAPS_KEY = "AIzaSyCD_C5qj6KH1qDXB7r-qcubGwSyrFZ66Tk";
+const STREET_VIEW_KEY = "AIzaSyBpgPG949IRv_nCoBBijWdWAwhnUrTDoLU"; 
 let googleMapsLoaded = false;
 let googleMapsLoading = false;
 let googleMapsCallbacks = [];
@@ -966,9 +967,9 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
 
   // Build Street View URL - prefer address string for best results
   const streetViewUrl = propData?.address
-    ? `https://maps.googleapis.com/maps/api/streetview?size=600x300&location=${encodeURIComponent(propData.address)}&fov=80&heading=235&pitch=10&return_error_code=true&key=${GOOGLE_MAPS_KEY}`
+    ? `https://maps.googleapis.com/maps/api/streetview?size=600x400&location=${encodeURIComponent(propData.address)}&fov=80&heading=235&pitch=10&return_error_code=true&key=${STREET_VIEW_KEY}`
     : propData?.lat && propData?.lng
-    ? `https://maps.googleapis.com/maps/api/streetview?size=600x300&location=${propData.lat},${propData.lng}&fov=80&return_error_code=true&key=${GOOGLE_MAPS_KEY}`
+    ? `https://maps.googleapis.com/maps/api/streetview?size=600x400&location=${propData.lat},${propData.lng}&fov=80&return_error_code=true&key=${STREET_VIEW_KEY}`
     : null;
 
   // Check Street View availability using metadata endpoint
@@ -978,7 +979,7 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
     const loc = propData.address
       ? encodeURIComponent(propData.address)
       : `${propData.lat},${propData.lng}`;
-    fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${loc}&key=${GOOGLE_MAPS_KEY}`)
+    fetch(`https://maps.googleapis.com/maps/api/streetview/metadata?location=${loc}&key=${STREET_VIEW_KEY}`)
       .then(r => r.json())
       .then(data => {
         if (data.status !== "OK") setStreetViewError(true);
@@ -1055,7 +1056,7 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
 
       {/* Street View / Home Image */}
       <div style={{ margin: "12px 20px 0", borderRadius: 20, overflow: "hidden", boxShadow: SHADOW }}>
-        <div style={{ height: 200, position: "relative", background: "linear-gradient(135deg,#64748b,#334155)" }}>
+        <div style={{ height: 260, position: "relative", background: "linear-gradient(135deg,#64748b,#334155)" }}>
           {streetViewUrl && !streetViewError ? (
             <img
               src={streetViewUrl}
