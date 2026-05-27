@@ -1054,14 +1054,16 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
         <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: 0 }}>{t.foundHome}</h1>
       </div>
 
-      {/* Street View / Home Image */}
+
+      {/* Street View — full image, NO overlay on top */}
       <div style={{ margin: "12px 20px 0", borderRadius: 20, overflow: "hidden", boxShadow: SHADOW }}>
-        <div style={{ height: 260, position: "relative", background: "linear-gradient(135deg,#64748b,#334155)" }}>
+        {/* Image */}
+        <div style={{ height: 240, background: "linear-gradient(135deg,#64748b,#334155)" }}>
           {streetViewUrl && !streetViewError ? (
             <img
               src={streetViewUrl}
               alt="Street view of property"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               onError={() => setStreetViewError(true)}
             />
           ) : (
@@ -1070,37 +1072,33 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
               <span style={{ color: C.gray, fontSize: 12, fontWeight: 600 }}>Street view not available</span>
             </div>
           )}
-
-          {/* Property stats overlay */}
-          <div style={{
-            position: "absolute", bottom: 0, left: 0, right: 0,
-            background: "rgba(22,62,100,0.88)", padding: "10px 16px",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
-              {[
-                { v: propData.beds, l: t.beds },
-                { v: propData.baths, l: t.baths },
-                { v: propData.sqft?.toLocaleString(), l: t.sqft },
-              ].map(({ v, l }) => (
-                <div key={l} style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{v || "—"}</div>
-                  <div style={{ fontSize: 11, color: C.gray, fontWeight: 700 }}>{l}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ background: C.blue, color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
-                {propData.type}
-              </span>
+        </div>
+        {/* Stats bar — sits BELOW the image */}
+        <div style={{ background: C.navy, padding: "10px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
+            {[
+              { v: propData.beds, l: t.beds },
+              { v: propData.baths, l: t.baths },
+              { v: propData.sqft?.toLocaleString(), l: t.sqft },
+            ].map(({ v, l }) => (
+              <div key={l} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{v || "—"}</div>
+                <div style={{ fontSize: 11, color: C.gray, fontWeight: 700 }}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ background: C.blue, color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+              {propData.type}
+            </span>
+            <span style={{ background: "rgba(255,255,255,0.15)", color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
+              {t.builtIn} {propData.year}
+            </span>
+            {propData.county && (
               <span style={{ background: "rgba(255,255,255,0.15)", color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
-                {t.builtIn} {propData.year}
+                {propData.county.charAt(0).toUpperCase() + propData.county.slice(1)} County
               </span>
-              {propData.county && (
-                <span style={{ background: "rgba(255,255,255,0.15)", color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
-                  {propData.county.charAt(0).toUpperCase() + propData.county.slice(1)} County
-                </span>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
