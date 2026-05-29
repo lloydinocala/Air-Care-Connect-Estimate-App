@@ -241,9 +241,16 @@ const sb = {
 // ── QUOTING ENGINE ────────────────────────────────────────────────────────────
 const QuoteEngine = {
   // Calculate tonnage from square footage
-  calcTonnage: (sqft, coolWell) => {
-    const base = sqft / 600;
-    const rounded = Math.ceil(base * 2) / 2; // round to nearest 0.5
+  // Site-built: 650 sqft/ton, Manufactured: 500 sqft/ton
+  // Round UP to nearest 0.5 ton
+  calcTonnage: (sqft, coolWell, homeType) => {
+    const isManufactured = homeType && 
+      (homeType.toLowerCase().includes("manufactured") || 
+       homeType.toLowerCase().includes("mobile"));
+    const divisor = isManufactured ? 500 : 650;
+    const raw = sqft / divisor;
+    // CEILING to nearest 0.5 ton
+    const rounded = Math.ceil(raw * 2) / 2;
     // If system always struggled, upsize by 0.5 ton
     if (coolWell === "struggled") {
       return Math.ceil((rounded + 0.5) * 2) / 2;
@@ -255,10 +262,16 @@ const QuoteEngine = {
   crossoverTonnage: (tons) => Math.ceil(tons),
 
   // Map system type answer to DB system_type values
-  getSystemTypes: (sysAnswer, brandFamily) => {
+  getSystemTypes: (sysAnswer, brandFamily, homeType) => {
+    const isApt = homeType && 
+      (homeType.toLowerCase().includes("condo") || 
+       homeType.toLowerCase().includes("apartment") ||
+       homeType.toLowerCase().includes("multi"));
+
     if (sysAnswer === "electric") {
-      if (brandFamily === "Trending in 2026") return ["CrossOver", "Apt CrossOver"];
-      return ["Split", "Apt Split"];
+      if (brandFamily === "Trending in 2026") return ["CrossOver"];
+      if (isApt) return ["Apt Split"];
+      return ["Split"];
     }
     if (sysAnswer === "package") return ["Packaged"];
     if (sysAnswer === "gas") return ["Gas"];
@@ -286,7 +299,7 @@ const QuoteEngine = {
   },
 
   // Fetch equipment from Supabase
-  fetchEquipment: async (systemType, tons, brandFamily, recommended = false) => {
+  fetchEquipment: async (systemType, tons, brandFamily, recommended = false, homeType = null) => {
     // Handle CrossOver rounding
     const queryTons = ["CrossOver", "Apt CrossOver"].includes(systemType)
       ? QuoteEngine.crossoverTonnage(tons)
@@ -295,6 +308,17 @@ const QuoteEngine = {
     let params = `system_type=eq.${encodeURIComponent(systemType)}&size_tons=eq.${queryTons}&active=eq.true&order=seer2.asc`;
     if (brandFamily) params += `&brand_family=eq.${encodeURIComponent(brandFamily)}`;
     if (recommended) params += `&recommended=eq.true`;
+
+    // Filter by home type if provided
+    if (homeType) {
+      const isManufactured = homeType.toLowerCase().includes("manufactured") || 
+                             homeType.toLowerCase().includes("mobile");
+      if (isManufactured) {
+        params += `&home_type=in.(Manufactured Home,Both)`;
+      } else {
+        params += `&home_type=in.(Site-Built,Both)`;
+      }
+    }
 
     return sb.get("equipment", params);
   },
@@ -1341,9 +1365,14 @@ function S10_Preparing({ brand, t, onDone }) {
 // ── SCREEN 11: ESTIMATE READY ─────────────────────────────────────────────────
 function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG }) {
   const { property, answers, adderTotal, allEquipment } = quote;
-  const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
+  const homeType = answers.detectedHomeType || property.type || "site-built";
+  const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell, homeType);
   const priceRange = QuoteEngine.getPriceRange(allEquipment, adderTotal);
-  const sysLabel = answers.systemType === "electric" ? "Split Heat Pump" : answers.systemType === "package" ? "Package Unit" : "Gas Furnace System";
+  const isManufactured = homeType.toLowerCase().includes("manufactured") || homeType.toLowerCase().includes("mobile");
+  const sysLabel = answers.systemType === "electric" 
+    ? (isManufactured ? "Package Unit" : "Split Heat Pump")
+    : answers.systemType === "package" ? "Package Unit" 
+    : "Gas Furnace System";
 
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack={false} showSave>
@@ -1410,7 +1439,8 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG 
   const [loading, setLoading] = useState(true);
   const { property, answers } = quote;
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
-  const systemTypes = QuoteEngine.getSystemTypes(answers.systemType, brandFamily);
+  const homeType = answers.detectedHomeType || property.type || "site-built";
+  const systemTypes = QuoteEngine.getSystemTypes(answers.systemType, brandFamily, homeType);
 
   useEffect(() => {
     const load = async () => {
@@ -1457,7 +1487,8 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
   const [savedIds, setSavedIds] = useState([]);
   const { property, answers, adderTotal } = quote;
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
-  const systemTypes = QuoteEngine.getSystemTypes(answers.systemType, brandFamily);
+  const homeType = answers.detectedHomeType || property.type || "site-built";
+  const systemTypes = QuoteEngine.getSystemTypes(answers.systemType, brandFamily, homeType);
 
   useEffect(() => {
     const load = async () => {
@@ -1726,8 +1757,9 @@ export default function App() {
   // Build quote object with adder calculation
   const buildQuote = useCallback(async (prop, curAnswers) => {
     const { total: adderTotal } = QuoteEngine.calcAdders(curAnswers);
-    const tons = QuoteEngine.calcTonnage(prop.sqft, curAnswers.coolWell);
-    const systemTypes = QuoteEngine.getSystemTypes(curAnswers.systemType, null);
+    const homeType = curAnswers.detectedHomeType || prop.type || "site-built";
+    const tons = QuoteEngine.calcTonnage(prop.sqft, curAnswers.coolWell, homeType);
+    const systemTypes = QuoteEngine.getSystemTypes(curAnswers.systemType, null, homeType);
 
     // Fetch all equipment for price range
     let allEquipment = [];
