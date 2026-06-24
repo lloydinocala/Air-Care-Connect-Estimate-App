@@ -1321,18 +1321,45 @@ function S9_SystemType({ brand, t, onSelect, onBack, onCG }) {
 }
 
 // ── SCREEN 10: LOADING ────────────────────────────────────────────────────────
-function S10_Preparing({ brand, t, onDone }) {
+function S10_Preparing({ brand, t, onDone, quoteReady }) {
   const [step, setStep] = useState(0);
   const bullets = [t.prepBullet1, t.prepBullet2, t.prepBullet3];
+
+  // Animate bullets on a timer (cosmetic only)
   useEffect(() => {
     const timers = [
       setTimeout(() => setStep(1), 900),
       setTimeout(() => setStep(2), 1900),
       setTimeout(() => setStep(3), 2900),
-      setTimeout(() => onDone(), 3800),
     ];
     return () => timers.forEach(clearTimeout);
   }, []);
+
+  // Only advance to next screen once the quote data has actually loaded
+  // AND a minimum time has passed (so it doesn't flash too fast)
+  useEffect(() => {
+    const minTimeElapsed = new Promise(resolve => setTimeout(resolve, 3800));
+    let cancelled = false;
+
+    const tryAdvance = async () => {
+      await minTimeElapsed;
+      if (!cancelled && quoteReady) {
+        onDone();
+      }
+    };
+    tryAdvance();
+
+    return () => { cancelled = true; };
+  }, [quoteReady]);
+
+  // Safety net: if quote isn't ready after 8 seconds, advance anyway
+  // and let S11 show an error/retry state rather than hang forever
+  useEffect(() => {
+    const failsafe = setTimeout(() => {
+      if (!quoteReady) onDone();
+    }, 8000);
+    return () => clearTimeout(failsafe);
+  }, [quoteReady]);
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: FONT, maxWidth: 430, margin: "0 auto" }}>
       <div style={{ padding: "20px 20px 0", textAlign: "center" }}>
@@ -1756,19 +1783,28 @@ export default function App() {
 
   // Build quote object with adder calculation
   const buildQuote = useCallback(async (prop, curAnswers) => {
-    const { total: adderTotal } = QuoteEngine.calcAdders(curAnswers);
-    const homeType = curAnswers.detectedHomeType || prop.type || "site-built";
-    const tons = QuoteEngine.calcTonnage(prop.sqft, curAnswers.coolWell, homeType);
-    const systemTypes = QuoteEngine.getSystemTypes(curAnswers.systemType, null, homeType);
+    try {
+      const { total: adderTotal } = QuoteEngine.calcAdders(curAnswers);
+      const homeType = curAnswers.detectedHomeType || prop.type || "site-built";
+      const tons = QuoteEngine.calcTonnage(prop.sqft, curAnswers.coolWell, homeType);
+      const systemTypes = QuoteEngine.getSystemTypes(curAnswers.systemType, null, homeType);
 
-    // Fetch all equipment for price range
-    let allEquipment = [];
-    for (const st of systemTypes) {
-      const eq = await QuoteEngine.fetchEquipment(st, tons, null);
-      allEquipment = [...allEquipment, ...eq];
+      console.log("buildQuote:", { homeType, tons, systemTypes, sqft: prop.sqft });
+
+      // Fetch all equipment for price range
+      let allEquipment = [];
+      for (const st of systemTypes) {
+        const eq = await QuoteEngine.fetchEquipment(st, tons, null, false, homeType);
+        console.log(`  fetched ${eq.length} rows for system_type=${st}, tons=${tons}`);
+        allEquipment = [...allEquipment, ...eq];
+      }
+
+      console.log("buildQuote total equipment found:", allEquipment.length);
+      setQuote({ property: prop, answers: curAnswers, adderTotal, allEquipment, tons });
+    } catch (err) {
+      console.error("buildQuote failed:", err);
+      setQuote(null);
     }
-
-    setQuote({ property: prop, answers: curAnswers, adderTotal, allEquipment, tons });
   }, []);
 
   return (
@@ -1837,11 +1873,21 @@ export default function App() {
         }}
         onBack={() => go("s8")} onCG={() => setShowCG(true)} />}
 
-      {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} />}
+      {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!quote} />}
 
       {screen === "s11" && quote && <S11_EstimateReady brand={brand} t={t} quote={quote}
         onChooseFamily={() => go("s12")}
         onCG={() => setShowCG(true)} />}
+      {screen === "s11" && !quote && (
+        <Shell t={t} brand={brand} onCG={() => setShowCG(true)} showBack onBack={() => go("s9")}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+            <h2 style={{ fontWeight: 900, color: C.navy, marginBottom: 8 }}>We hit a snag</h2>
+            <p style={{ color: "#64748b", marginBottom: 24 }}>We could not load your estimate. This is usually temporary — please try again.</p>
+            <BlueBtn onClick={() => { setScreen("s9"); }} style={{ maxWidth: 240 }}>← Try Again</BlueBtn>
+          </div>
+        </Shell>
+      )}
 
       {screen === "s12" && <S12_BrandFamily brand={brand} t={t} quote={quote}
         onSelect={f => { setBrandFamily(f); go("s13"); }}
