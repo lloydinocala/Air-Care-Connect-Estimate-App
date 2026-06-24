@@ -1887,7 +1887,7 @@ function CheckoutPayment({ brand, t, quote, selectedEq, customerInfo, onSelectMe
     { id: "ach", label: t.payACH, sub: t.payACHSub, icon: "bank", deposit: deposit, blue: false },
     { id: "ftl", label: t.payFTL, sub: t.payFTLSub, icon: "doc", deposit: 0, blue: true },
     { id: "microf", label: t.payMicrof, sub: t.payMicrofSub, icon: "house_lease", deposit: 0, blue: false },
-    { id: "affirm", label: t.payAffirm, sub: t.payAffirmSub, icon: "calendar_pay", deposit: 0, blue: true },
+    // Affirm removed - not yet integrated with real API. Re-add once Affirm approval + API keys are in place.
   ];
 
   const icons = {
@@ -1895,7 +1895,6 @@ function CheckoutPayment({ brand, t, quote, selectedEq, customerInfo, onSelectMe
     bank: "\uD83C\uDFE6",
     doc: "\uD83D\uDCCB",
     house_lease: "\uD83C\uDFE0",
-    calendar_pay: "\uD83D\uDCC5",
   };
 
   return (
@@ -2534,13 +2533,6 @@ export default function App() {
         <CheckoutMicrof brand={brand} t={t}
           total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           customerInfo={customerInfo}
-          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
-      )}
-
-      {screen === "pay_affirm" && selectedEq && (
-        <CheckoutAffirm brand={brand} t={t}
-          total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
           onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
       )}
