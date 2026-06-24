@@ -10,6 +10,9 @@ const SHADOW = "6px 6px 12px rgba(0,0,0,0.22)";
 const SHADOW_SM = "3px 3px 8px rgba(0,0,0,0.16)";
 const FONT = "'Nunito', 'Segoe UI', sans-serif";
 const SUPABASE_URL = "https://dalertxugwgkfsyizmly.supabase.co";
+const FTL_DEALER_LINK = "https://beta.apptracker.ftlfinance.com/C214404";
+const MICROF_DEALER_LINK = "https://dealer.microf.com/?did=5cF7bP6dM1wH4sX8wB";
+const STRIPE_PUBLISHABLE_KEY = "pk_test_51TlgwhIH4oQGJWTRM76aWpR6oHRIRsy4ajl9Q4qTHtSgZCopVuyyAGZZNBaP0oAeUBKbWQlcoCs9yptLqyeqaXr300yXr7vCZi";
 const SUPABASE_KEY = "sb_publishable_nPaxXCiHyZkO8MkRsz-1Zw_ZgPBlybk";
 
 // ── BRAND CONFIG ──────────────────────────────────────────────────────────────
@@ -113,6 +116,50 @@ const T = {
     saveProgress: "Save My Progress",
     savedTitle: "Progress Saved!",
     savedDesc: "We've sent a link to your email. Click it anytime to resume your estimate on any device.",
+    paymentTitle: "Choose How You'd Like to Pay",
+    paymentDesc: "A 50% deposit secures your installation date. Financing through FTL requires no deposit today.",
+    payCard: "Pay by Card", payCardSub: "Instant - secured by Stripe",
+    payACH: "Pay by Bank Transfer (ACH)", payACHSub: "No card fees - 1-3 day verification",
+    payFTL: "Apply for Financing (FTL)", payFTLSub: "Traditional credit-based financing - own your system from day one",
+    payMicrof: "Lease-to-Own (Microf)", payMicrofSub: "Flexible approval - lease today, own it later",
+    microfBridgeTitle: "Lease-to-Own with Microf",
+    microfBridgeDesc: "You'll complete a quick application on Microf's secure site. Approval is flexible and doesn't require perfect credit. No deposit required while your application is reviewed.",
+    microfContinue: "Continue to Microf Application",
+    payAffirm: "Pay Over Time with Affirm", payAffirmSub: "Instant approval - flexible monthly plans",
+    depositDue: "Deposit Due Today", noDepositDue: "No Deposit Due Today",
+    cardFormTitle: "Enter Card Details",
+    cardNumber: "Card Number", cardExpiry: "MM/YY", cardCvc: "CVC", cardZip: "Billing ZIP",
+    payNow: "Pay Deposit Now",
+    achFormTitle: "Enter Bank Account Details",
+    achRouting: "Routing Number", achAccount: "Account Number", achAccountType: "Account Type",
+    achChecking: "Checking", achSavings: "Savings",
+    achSubmit: "Submit Bank Payment",
+    ftlBridgeTitle: "You're About to Apply for Financing",
+    ftlBridgeDesc: "You'll complete your application on FTL's secure site - it takes about 5 minutes. No deposit is required while your application is reviewed.",
+    ftlContinue: "Continue to FTL Application",
+    affirmBridgeTitle: "Pay Over Time with Affirm",
+    affirmBridgeDesc: "See your monthly payment options instantly. No impact to your credit score to check.",
+    affirmContinue: "Continue to Affirm",
+    processingPayment: "Processing your payment...",
+    paymentSuccess: "Payment Confirmed!",
+    calendarTitle: "Choose Your Installation Date",
+    calendarDesc: "Select an available date below. Your spot is reserved the moment you choose it.",
+    noSlotsAvailable: "No available dates this month",
+    nextMonth: "Next Month", prevMonth: "Previous Month",
+    confirmDate: "Confirm This Date",
+    confirmationTitle: "You're All Set!",
+    confirmationDesc: "Your installation is scheduled. We've sent a confirmation to your email and phone.",
+    bookingRef: "Booking Reference",
+    installDate: "Installation Date",
+    whatNext: "What Happens Next",
+    nextStep1: "You'll receive an email and text confirmation within minutes",
+    nextStep2: "Our team will call you within 1 business day to confirm details",
+    nextStep3: "Our technicians will arrive on your scheduled date, ready to install",
+    backToHome: "Return to Home",
+    cardDeclined: "Your card was declined. Please try a different payment method.",
+    achPending: "Your bank payment is being verified. This typically takes 1-3 business days.",
+    slotHeld: "Your slot is held for",
+    hours: "hours", minutes: "minutes",
     notSureShort: "I'm not sure",
     cgTitle: "Comfort Guide", cgPlaceholder: "Ask me anything...", cgSend: "Send", cgThinking: "Thinking...",
     cgWelcome: "Hi! I'm your Comfort Guide. I can help you understand your options, explain equipment differences, or answer any questions about the process. What's on your mind?",
@@ -211,6 +258,50 @@ const T = {
     saveProgress: "Guardar Mi Progreso",
     savedTitle: "¡Progreso Guardado!",
     savedDesc: "Le hemos enviado un enlace a su correo. Haga clic en cualquier momento para continuar.",
+    paymentTitle: "Elija Cómo Le Gustaría Pagar",
+    paymentDesc: "Un depósito del 50% asegura su fecha de instalación. El financiamiento FTL no requiere depósito hoy.",
+    payCard: "Pagar con Tarjeta", payCardSub: "Instantáneo - asegurado por Stripe",
+    payACH: "Pagar por Transferencia Bancaria (ACH)", payACHSub: "Sin cargos de tarjeta - verificación de 1-3 días",
+    payFTL: "Solicitar Financiamiento (FTL)", payFTLSub: "Financiamiento tradicional basado en crédito - sea dueño de su sistema desde el primer día",
+    payMicrof: "Arrendamiento con Opción a Compra (Microf)", payMicrofSub: "Aprobación flexible - arriende hoy, sea dueño después",
+    microfBridgeTitle: "Arrendamiento con Opción a Compra con Microf",
+    microfBridgeDesc: "Completará una solicitud rápida en el sitio seguro de Microf. La aprobación es flexible y no requiere crédito perfecto. No se requiere depósito mientras se revisa su solicitud.",
+    microfContinue: "Continuar a la Solicitud de Microf",
+    payAffirm: "Pagar con el Tiempo con Affirm", payAffirmSub: "Aprobación instantánea - planes mensuales flexibles",
+    depositDue: "Depósito Debido Hoy", noDepositDue: "Sin Depósito Hoy",
+    cardFormTitle: "Ingrese los Detalles de la Tarjeta",
+    cardNumber: "Número de Tarjeta", cardExpiry: "MM/AA", cardCvc: "CVC", cardZip: "Código Postal",
+    payNow: "Pagar Depósito Ahora",
+    achFormTitle: "Ingrese los Detalles de la Cuenta Bancaria",
+    achRouting: "Número de Ruta", achAccount: "Número de Cuenta", achAccountType: "Tipo de Cuenta",
+    achChecking: "Cuenta de Cheques", achSavings: "Cuenta de Ahorros",
+    achSubmit: "Enviar Pago Bancario",
+    ftlBridgeTitle: "Está a Punto de Solicitar Financiamiento",
+    ftlBridgeDesc: "Completará su solicitud en el sitio seguro de FTL - toma unos 5 minutos. No se requiere depósito mientras se revisa su solicitud.",
+    ftlContinue: "Continuar a la Solicitud de FTL",
+    affirmBridgeTitle: "Pague con el Tiempo con Affirm",
+    affirmBridgeDesc: "Vea sus opciones de pago mensual al instante. Sin impacto en su puntaje de crédito al consultar.",
+    affirmContinue: "Continuar a Affirm",
+    processingPayment: "Procesando su pago...",
+    paymentSuccess: "¡Pago Confirmado!",
+    calendarTitle: "Elija Su Fecha de Instalación",
+    calendarDesc: "Seleccione una fecha disponible abajo. Su lugar se reserva en el momento que lo eliga.",
+    noSlotsAvailable: "No hay fechas disponibles este mes",
+    nextMonth: "Mes Siguiente", prevMonth: "Mes Anterior",
+    confirmDate: "Confirmar Esta Fecha",
+    confirmationTitle: "¡Todo Listo!",
+    confirmationDesc: "Su instalación está programada. Hemos enviado una confirmación a su correo y teléfono.",
+    bookingRef: "Referencia de Reserva",
+    installDate: "Fecha de Instalación",
+    whatNext: "Qué Sigue",
+    nextStep1: "Recibirá una confirmación por correo y mensaje de texto en minutos",
+    nextStep2: "Nuestro equipo le llamará dentro de 1 día hábil para confirmar los detalles",
+    nextStep3: "Nuestros técnicos llegarán en su fecha programada, listos para instalar",
+    backToHome: "Volver al Inicio",
+    cardDeclined: "Su tarjeta fue rechazada. Por favor intente otro método de pago.",
+    achPending: "Su pago bancario está siendo verificado. Esto generalmente toma 1-3 días hábiles.",
+    slotHeld: "Su lugar está reservado por",
+    hours: "horas", minutes: "minutos",
     notSureShort: "No estoy seguro",
     cgTitle: "Guía de Confort", cgPlaceholder: "Pregúnteme cualquier cosa...", cgSend: "Enviar", cgThinking: "Pensando...",
     cgWelcome: "¡Hola! Soy su Guía de Confort. Puedo ayudarle con sus opciones y responder preguntas. ¿En qué puedo ayudarle?",
@@ -340,6 +431,40 @@ const QuoteEngine = {
     };
   },
 };
+
+// ── STRIPE.JS LOADER ──────────────────────────────────────────────────────────
+let stripeInstance = null;
+let stripeLoading = false;
+let stripeCallbacks = [];
+
+function loadStripe(callback) {
+  if (stripeInstance) { callback(stripeInstance); return; }
+  stripeCallbacks.push(callback);
+  if (stripeLoading) return;
+  stripeLoading = true;
+
+  const initStripe = () => {
+    if (window.Stripe) {
+      stripeInstance = window.Stripe(STRIPE_PUBLISHABLE_KEY);
+      stripeCallbacks.forEach(cb => cb(stripeInstance));
+      stripeCallbacks = [];
+    }
+  };
+
+  if (window.Stripe) {
+    initStripe();
+    return;
+  }
+
+  if (!document.getElementById("stripe-js")) {
+    const script = document.createElement("script");
+    script.id = "stripe-js";
+    script.src = "https://js.stripe.com/v3/";
+    script.async = true;
+    script.onload = initStripe;
+    document.head.appendChild(script);
+  }
+}
 
 // ── GOOGLE FONTS ──────────────────────────────────────────────────────────────
 function FontLoader() {
@@ -1752,6 +1877,468 @@ function S16_PersonalInfo({ brand, t, onContinue, onBack, onCG }) {
   );
 }
 
+// ── CHECKOUT: PAYMENT METHOD SELECTION ────────────────────────────────────────
+function CheckoutPayment({ brand, t, quote, selectedEq, customerInfo, onSelectMethod, onBack, onCG }) {
+  const total = (selectedEq.installation_price || 0) + (quote.adderTotal || 0);
+  const deposit = Math.round(total * 0.5);
+
+  const methods = [
+    { id: "card", label: t.payCard, sub: t.payCardSub, icon: "card_credit_card", deposit: deposit, blue: true },
+    { id: "ach", label: t.payACH, sub: t.payACHSub, icon: "bank", deposit: deposit, blue: false },
+    { id: "ftl", label: t.payFTL, sub: t.payFTLSub, icon: "doc", deposit: 0, blue: true },
+    { id: "microf", label: t.payMicrof, sub: t.payMicrofSub, icon: "house_lease", deposit: 0, blue: false },
+    { id: "affirm", label: t.payAffirm, sub: t.payAffirmSub, icon: "calendar_pay", deposit: 0, blue: true },
+  ];
+
+  const icons = {
+    card_credit_card: "\uD83D\uDCB3",
+    bank: "\uD83C\uDFE6",
+    doc: "\uD83D\uDCCB",
+    house_lease: "\uD83C\uDFE0",
+    calendar_pay: "\uD83D\uDCC5",
+  };
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.paymentTitle}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0", lineHeight: 1.5 }}>{t.paymentDesc}</p>
+      </div>
+
+      <div style={{ padding: "16px 20px 0" }}>
+        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW_SM, marginBottom: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>System Total</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: C.navy }}>${total.toLocaleString()}</div>
+        </div>
+
+        {methods.map(m => (
+          <button key={m.id} onClick={() => onSelectMethod(m.id)} style={{
+            width: "100%", background: C.white, border: `2px solid ${m.blue ? C.blue : C.gray}`,
+            borderRadius: 16, padding: "16px", marginBottom: 12, cursor: "pointer",
+            textAlign: "left", fontFamily: FONT, boxShadow: SHADOW_SM,
+            display: "flex", alignItems: "center", gap: 14,
+            transition: "transform 0.15s",
+          }}
+            onMouseEnter={e => e.currentTarget.style.transform = "translateY(-1px)"}
+            onMouseLeave={e => e.currentTarget.style.transform = ""}
+          >
+            <span style={{ fontSize: 32 }}>{icons[m.icon]}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 900, fontSize: 15, color: C.navy }}>{m.label}</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{m.sub}</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: m.deposit > 0 ? C.blue : C.green, marginTop: 6 }}>
+                {m.deposit > 0 ? `${t.depositDue}: $${m.deposit.toLocaleString()}` : t.noDepositDue}
+              </div>
+            </div>
+            <span style={{ fontSize: 18, color: C.blue }}>→</span>
+          </button>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHECKOUT: CARD PAYMENT FORM (Real Stripe Elements) ────────────────────────
+function CheckoutCard({ brand, t, deposit, customerInfo, onSuccess, onBack, onCG }) {
+  const [stripe, setStripe] = useState(null);
+  const [elements, setElements] = useState(null);
+  const [cardElement, setCardElement] = useState(null);
+  const [clientSecret, setClientSecret] = useState(null);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState("");
+  const [ready, setReady] = useState(false);
+  const cardRef = useRef(null);
+
+  // Load Stripe.js and create the payment intent
+  useEffect(() => {
+    loadStripe(async (stripeInst) => {
+      setStripe(stripeInst);
+
+      // Create payment intent on the server
+      try {
+        const r = await fetch("/api/create-payment-intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: deposit,
+            customerEmail: customerInfo?.email,
+            customerName: customerInfo?.name,
+            description: "Air-Care Connect - AC System Installation Deposit",
+            paymentMethodType: "card",
+          }),
+        });
+        const data = await r.json();
+        if (data.clientSecret) {
+          setClientSecret(data.clientSecret);
+        } else {
+          setError(data.error || "Could not initialize payment");
+        }
+      } catch(e) {
+        setError("Could not connect to payment processor");
+      }
+    });
+  }, []);
+
+  // Mount the Stripe card element once we have stripe + clientSecret
+  useEffect(() => {
+    if (!stripe || !clientSecret || !cardRef.current || cardElement) return;
+
+    const elementsInst = stripe.elements({ clientSecret });
+    const card = elementsInst.create("payment");
+    card.mount(cardRef.current);
+    card.on("ready", () => setReady(true));
+    card.on("change", (event) => {
+      if (event.error) setError(event.error.message);
+      else setError("");
+    });
+
+    setElements(elementsInst);
+    setCardElement(card);
+  }, [stripe, clientSecret]);
+
+  const handlePay = async () => {
+    if (!stripe || !elements || processing) return;
+    setProcessing(true);
+    setError("");
+
+    const { error: confirmError } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+    });
+
+    if (confirmError) {
+      setError(confirmError.message || t.cardDeclined);
+      setProcessing(false);
+      return;
+    }
+
+    setProcessing(false);
+    onSuccess({ method: "card", holdHours: 0 }); // instant lock on success
+  };
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.cardFormTitle}</h1>
+        <div style={{ fontSize: 24, fontWeight: 900, color: C.blue, margin: "10px 0" }}>${deposit.toLocaleString()}</div>
+      </div>
+
+      <div style={{ padding: "8px 20px 0" }}>
+        <div style={{
+          background: C.white, border: `2px solid ${C.blue}`, borderRadius: 12,
+          padding: "16px", marginBottom: 14, boxShadow: SHADOW_SM, minHeight: 50,
+        }}>
+          {!ready && !error && (
+            <div style={{ textAlign: "center", color: C.blue, fontWeight: 600, fontSize: 13 }}>
+              Loading secure payment form...
+            </div>
+          )}
+          <div ref={cardRef} />
+        </div>
+
+        {error && <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 700, textAlign: "center", marginBottom: 8 }}>{error}</p>}
+
+        <BlueBtn onClick={handlePay} disabled={!ready || processing} style={{ marginTop: 8 }}>
+          {processing ? t.processingPayment : `${t.payNow} - $${deposit.toLocaleString()}`}
+        </BlueBtn>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16 }}>
+          <span style={{ fontSize: 16 }}>{"\uD83D\uDD12"}</span>
+          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>Secured by Stripe — your card details are encrypted</span>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHECKOUT: ACH BANK PAYMENT FORM ───────────────────────────────────────────
+function CheckoutACH({ brand, t, deposit, onSuccess, onBack, onCG }) {
+  const [form, setForm] = useState({ routing: "", account: "", accountType: "checking" });
+  const [processing, setProcessing] = useState(false);
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const valid = form.routing.length === 9 && form.account.length >= 4;
+
+  const handleSubmit = async () => {
+    if (!valid) return;
+    setProcessing(true);
+    await new Promise(r => setTimeout(r, 1800));
+    setProcessing(false);
+    onSuccess({ method: "ach", holdHours: 24 });
+  };
+
+  const inputStyle = {
+    width: "100%", border: `2px solid ${C.blue}`, borderRadius: 12,
+    padding: "13px 16px", fontSize: 15, outline: "none", fontFamily: FONT,
+    boxSizing: "border-box", color: C.navy, fontWeight: 600,
+    background: C.white, boxShadow: SHADOW_SM, marginBottom: 12,
+  };
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.achFormTitle}</h1>
+        <div style={{ fontSize: 24, fontWeight: 900, color: C.blue, margin: "10px 0" }}>${deposit.toLocaleString()}</div>
+      </div>
+
+      <div style={{ padding: "8px 20px 0" }}>
+        <input value={form.routing} onChange={e => set("routing", e.target.value.replace(/\D/g,"").slice(0,9))}
+          placeholder={t.achRouting} inputMode="numeric" style={inputStyle} />
+        <input value={form.account} onChange={e => set("account", e.target.value.replace(/\D/g,"").slice(0,17))}
+          placeholder={t.achAccount} inputMode="numeric" style={inputStyle} />
+
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          {["checking","savings"].map(type => (
+            <button key={type} onClick={() => set("accountType", type)} style={{
+              flex: 1, background: form.accountType === type ? C.blue : C.white,
+              color: form.accountType === type ? C.white : C.blue,
+              border: `2px solid ${C.blue}`, borderRadius: 50, padding: "10px",
+              fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT,
+            }}>{type === "checking" ? t.achChecking : t.achSavings}</button>
+          ))}
+        </div>
+
+        <div style={{ background: "#f0f9ff", borderRadius: 10, padding: "10px 14px", marginBottom: 14, border: `1px solid ${C.blue}` }}>
+          <p style={{ margin: 0, fontSize: 12, color: C.navy, fontWeight: 600, lineHeight: 1.5 }}>
+            {t.achPending}
+          </p>
+        </div>
+
+        <BlueBtn onClick={handleSubmit} disabled={!valid || processing}>
+          {processing ? t.processingPayment : t.achSubmit}
+        </BlueBtn>
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHECKOUT: FTL FINANCING BRIDGE ────────────────────────────────────────────
+function CheckoutFTL({ brand, t, total, customerInfo, onSuccess, onBack, onCG }) {
+  const handleContinue = () => {
+    // Open FTL dealer portal in new tab - identifies Air-Care Connect as the contractor
+    window.open(FTL_DEALER_LINK, "_blank", "noopener,noreferrer");
+    // Move customer forward in the app while they complete the FTL application
+    onSuccess({ method: "ftl", holdHours: 48 });
+  };
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>{"\uD83D\uDCCB"}</div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: "0 0 12px" }}>{t.ftlBridgeTitle}</h1>
+        <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 24, maxWidth: 320 }}>{t.ftlBridgeDesc}</p>
+
+        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW_SM, width: "100%", marginBottom: 24 }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>Financing Amount</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: C.navy }}>${total.toLocaleString()}</div>
+        </div>
+
+        <BlueBtn onClick={handleContinue}>{t.ftlContinue}</BlueBtn>
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHECKOUT: MICROF LEASE-TO-OWN BRIDGE ──────────────────────────────────────
+function CheckoutMicrof({ brand, t, total, customerInfo, onSuccess, onBack, onCG }) {
+  const handleContinue = () => {
+    if (MICROF_DEALER_LINK) {
+      window.open(MICROF_DEALER_LINK, "_blank", "noopener,noreferrer");
+    } else {
+      alert("Microf link is being renewed - please contact our office to complete your lease-to-own application.");
+    }
+    onSuccess({ method: "microf", holdHours: 48 });
+  };
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>{"\uD83C\uDFE0"}</div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: "0 0 12px" }}>{t.microfBridgeTitle}</h1>
+        <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 24, maxWidth: 320 }}>{t.microfBridgeDesc}</p>
+
+        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW_SM, width: "100%", marginBottom: 24 }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>Lease Amount</div>
+          <div style={{ fontSize: 26, fontWeight: 900, color: C.navy }}>${total.toLocaleString()}</div>
+        </div>
+
+        <BlueBtn onClick={handleContinue}>{t.microfContinue}</BlueBtn>
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHECKOUT: AFFIRM BRIDGE ───────────────────────────────────────────────────
+function CheckoutAffirm({ brand, t, total, onSuccess, onBack, onCG }) {
+  const monthly12 = Math.round(total / 12);
+  const monthly24 = Math.round(total / 24);
+
+  const handleContinue = () => {
+    onSuccess({ method: "affirm", holdHours: 0 });
+  };
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 56, marginBottom: 16 }}>{"\uD83D\uDCC5"}</div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: "0 0 12px" }}>{t.affirmBridgeTitle}</h1>
+        <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 20, maxWidth: 320 }}>{t.affirmBridgeDesc}</p>
+
+        <div style={{ display: "flex", gap: 12, width: "100%", marginBottom: 24 }}>
+          <div style={{ flex: 1, background: C.white, borderRadius: 16, padding: 14, boxShadow: SHADOW_SM, textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700 }}>12 months</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: C.navy }}>${monthly12}/mo</div>
+          </div>
+          <div style={{ flex: 1, background: C.white, borderRadius: 16, padding: 14, boxShadow: SHADOW_SM, textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700 }}>24 months</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: C.navy }}>${monthly24}/mo</div>
+          </div>
+        </div>
+
+        <BlueBtn onClick={handleContinue}>{t.affirmContinue}</BlueBtn>
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHECKOUT: SCHEDULING CALENDAR ─────────────────────────────────────────────
+function CheckoutCalendar({ brand, t, paymentInfo, onConfirm, onBack, onCG }) {
+  const [availableDates, setAvailableDates] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await sb.get("availability", "is_open=eq.true&order=available_date.asc");
+        setAvailableDates(data.filter(d => d.booked_slots < d.max_slots));
+      } catch(e) {
+        console.error("Calendar load error:", e);
+      }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  // Group dates by month for display
+  const now = new Date();
+  const viewMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const monthDates = availableDates.filter(d => {
+    const dt = new Date(d.available_date);
+    return dt.getMonth() === viewMonth.getMonth() && dt.getFullYear() === viewMonth.getFullYear();
+  });
+
+  const monthName = viewMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.calendarTitle}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{t.calendarDesc}</p>
+      </div>
+
+      <div style={{ padding: "16px 20px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <button onClick={() => setMonthOffset(p => Math.max(0, p - 1))} disabled={monthOffset === 0}
+            style={{ background: "none", border: "none", color: monthOffset === 0 ? C.gray : C.blue, fontWeight: 800, cursor: monthOffset === 0 ? "default" : "pointer", fontFamily: FONT }}>
+            ← {t.prevMonth}
+          </button>
+          <span style={{ fontWeight: 900, color: C.navy, fontSize: 15 }}>{monthName}</span>
+          <button onClick={() => setMonthOffset(p => p + 1)}
+            style={{ background: "none", border: "none", color: C.blue, fontWeight: 800, cursor: "pointer", fontFamily: FONT }}>
+            {t.nextMonth} →
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", border: `4px solid ${C.gray}`, borderTop: `4px solid ${C.blue}`, animation: "spin 1s linear infinite", margin: "0 auto" }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        ) : monthDates.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 32, color: "#64748b", fontWeight: 600 }}>
+            {t.noSlotsAvailable}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {monthDates.map(d => {
+              const dt = new Date(d.available_date);
+              const isSelected = selectedDate?.available_date === d.available_date;
+              return (
+                <button key={d.available_date} onClick={() => setSelectedDate(d)} style={{
+                  background: isSelected ? C.blue : C.white,
+                  color: isSelected ? C.white : C.navy,
+                  border: `2px solid ${C.blue}`, borderRadius: 14,
+                  padding: "14px 10px", cursor: "pointer", fontFamily: FONT,
+                  boxShadow: SHADOW_SM, textAlign: "center",
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.8 }}>
+                    {dt.toLocaleDateString("en-US", { weekday: "short" })}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 900 }}>{dt.getDate()}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, opacity: 0.8 }}>
+                    {dt.toLocaleDateString("en-US", { month: "short" })}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {selectedDate && (
+          <BlueBtn onClick={() => onConfirm(selectedDate)} style={{ marginTop: 20 }}>
+            {t.confirmDate} — {new Date(selectedDate.available_date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+          </BlueBtn>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHECKOUT: CONFIRMATION ─────────────────────────────────────────────────────
+function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo, onDone }) {
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: FONT, maxWidth: 430, margin: "0 auto" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+        <div style={{
+          width: 90, height: 90, borderRadius: "50%", background: C.green,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 48, color: C.white, marginBottom: 20, boxShadow: SHADOW,
+        }}>✓</div>
+
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: "0 0 8px" }}>{t.confirmationTitle}</h1>
+        <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 24, maxWidth: 320 }}>{t.confirmationDesc}</p>
+
+        <div style={{ background: C.white, borderRadius: 16, padding: 20, boxShadow: SHADOW, width: "100%", marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.gray}` }}>
+            <span style={{ color: "#64748b", fontWeight: 600, fontSize: 13 }}>{t.bookingRef}</span>
+            <span style={{ color: C.navy, fontWeight: 900, fontSize: 13 }}>{bookingRef}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
+            <span style={{ color: "#64748b", fontWeight: 600, fontSize: 13 }}>{t.installDate}</span>
+            <span style={{ color: C.navy, fontWeight: 900, fontSize: 13 }}>
+              {new Date(installDate).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ background: C.white, borderRadius: 16, padding: 18, boxShadow: SHADOW_SM, width: "100%", marginBottom: 24, textAlign: "left" }}>
+          <div style={{ fontWeight: 900, fontSize: 14, color: C.navy, marginBottom: 10 }}>{t.whatNext}</div>
+          {[t.nextStep1, t.nextStep2, t.nextStep3].map((step, i) => (
+            <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 13, color: C.navy, fontWeight: 600, lineHeight: 1.4 }}>
+              <span style={{ color: C.blue, fontWeight: 900 }}>{i + 1}.</span>{step}
+            </div>
+          ))}
+        </div>
+
+        <BlueBtn onClick={onDone}>{t.backToHome}</BlueBtn>
+      </div>
+    </div>
+  );
+}
+
 // ── LANGUAGE TOGGLE ───────────────────────────────────────────────────────────
 function LangToggle({ lang, setLang }) {
   return (
@@ -1774,6 +2361,9 @@ export default function App() {
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [selectedEq, setSelectedEq] = useState(null);
   const [customerInfo, setCustomerInfo] = useState(null);
+  const [paymentInfo, setPaymentInfo] = useState(null);
+  const [bookingRef, setBookingRef] = useState(null);
+  const [installDate, setInstallDate] = useState(null);
   const [showCG, setShowCG] = useState(false);
 
   const brand = BRAND[lang];
@@ -1911,26 +2501,68 @@ export default function App() {
         onContinue={info => { setCustomerInfo(info); go("checkout"); }}
         onBack={() => go("s15")} onCG={() => setShowCG(true)} />}
 
-      {screen === "checkout" && (
-        <Shell t={t} brand={brand} onCG={() => setShowCG(true)} showBack onBack={() => go("s16")}>
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>💳</div>
-            <h2 style={{ fontWeight: 900, color: C.navy, marginBottom: 8 }}>Payment & Scheduling</h2>
-            <p style={{ color: C.navy, fontWeight: 600, marginBottom: 8 }}>
-              Welcome, {customerInfo?.name}!
-            </p>
-            <p style={{ color: "#64748b", marginBottom: 24 }}>
-              Checkout flow — Stripe + ACH + FTL + Affirm + Calendar — coming next session
-            </p>
-            <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW_SM, width: "100%", marginBottom: 16 }}>
-              <div style={{ fontSize: 13, color: C.blue, fontWeight: 700 }}>Total Due Today (50% Deposit)</div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: C.navy }}>
-                ${(((selectedEq?.installation_price || 0) + (quote?.adderTotal || 0)) * 0.5).toLocaleString()}
-              </div>
-            </div>
-            <BlueBtn onClick={() => go("s1")} style={{ maxWidth: 220 }}>← Start Over</BlueBtn>
-          </div>
-        </Shell>
+      {screen === "checkout" && selectedEq && quote && (
+        <CheckoutPayment brand={brand} t={t} quote={quote} selectedEq={selectedEq} customerInfo={customerInfo}
+          onSelectMethod={method => go(`pay_${method}`)}
+          onBack={() => go("s16")} onCG={() => setShowCG(true)} />
+      )}
+
+      {screen === "pay_card" && selectedEq && (
+        <CheckoutCard brand={brand} t={t}
+          deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
+          customerInfo={customerInfo}
+          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+      )}
+
+      {screen === "pay_ach" && selectedEq && (
+        <CheckoutACH brand={brand} t={t}
+          deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
+          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+      )}
+
+      {screen === "pay_ftl" && selectedEq && (
+        <CheckoutFTL brand={brand} t={t}
+          total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
+          customerInfo={customerInfo}
+          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+      )}
+
+      {screen === "pay_microf" && selectedEq && (
+        <CheckoutMicrof brand={brand} t={t}
+          total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
+          customerInfo={customerInfo}
+          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+      )}
+
+      {screen === "pay_affirm" && selectedEq && (
+        <CheckoutAffirm brand={brand} t={t}
+          total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
+          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+      )}
+
+      {screen === "schedule" && (
+        <CheckoutCalendar brand={brand} t={t} paymentInfo={paymentInfo}
+          onConfirm={date => {
+            setInstallDate(date.available_date);
+            const ref = `ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`;
+            setBookingRef(ref);
+            go("confirmation");
+          }}
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+      )}
+
+      {screen === "confirmation" && (
+        <CheckoutConfirmation brand={brand} t={t} bookingRef={bookingRef} installDate={installDate} customerInfo={customerInfo}
+          onDone={() => {
+            setScreen("s1"); setProperty(null); setAnswers({}); setQuote(null);
+            setBrandFamily(null); setSelectedBrand(null); setSelectedEq(null);
+            setCustomerInfo(null); setPaymentInfo(null); setBookingRef(null); setInstallDate(null);
+          }} />
       )}
     </div>
   );
