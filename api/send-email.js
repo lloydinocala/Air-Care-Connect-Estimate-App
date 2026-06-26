@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     if (!response.ok) {
       const errorData = await response.text();
       console.error('SendGrid error:', errorData);
-      return res.status(response.status).json({ error: 'Email send failed' });
+      return res.status(response.status).json({ error: `SendGrid: ${errorData}` });
     }
 
     return res.status(200).json({ success: true });
