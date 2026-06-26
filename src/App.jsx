@@ -1038,7 +1038,7 @@ REGLAS:
 }
 
 // ── SCREEN 1: LANDING ─────────────────────────────────────────────────────────
-function S1_Landing({ brand, t, onStart, onCG }) {
+function S1_Landing({ brand, t, onStart, onCG, onSave }) {
   const [modal, setModal] = useState(false);
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: FONT, maxWidth: 430, margin: "0 auto" }}>
@@ -1099,7 +1099,7 @@ function loadGoogleMaps(callback) {
 }
 
 // ── SCREEN 2: ADDRESS ─────────────────────────────────────────────────────────
-function S2_Address({ brand, t, onFound, onBack, onCG }) {
+function S2_Address({ brand, t, onFound, onBack, onCG, onSave }) {
   const [addr, setAddr] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -1403,7 +1403,7 @@ const fetchPropertyData = async (address, lat, lng, apiKey) => {
 };
 
 // ── SCREEN 3: CONFIRM HOME ────────────────────────────────────────────────────
-function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG }) {
+function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG, onSave }) {
   const [propData, setPropData] = useState(property);
   const [loadingProp, setLoadingProp] = useState(true);
   const [streetViewError, setStreetViewError] = useState(false);
@@ -1608,7 +1608,7 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG })
 }
 
 // ── SCREEN 4: INTENT ──────────────────────────────────────────────────────────
-function S4_Intent({ brand, t, onSelect, onBack, onCG }) {
+function S4_Intent({ brand, t, onSelect, onBack, onCG, onSave }) {
   const opts = [
     { id: "replace", label: t.replaceMain, sub: t.replaceMainSub, blue: true },
     { id: "minisplit", label: t.addRoom, sub: t.addRoomSub, blue: false },
@@ -1634,7 +1634,7 @@ function S4_Intent({ brand, t, onSelect, onBack, onCG }) {
 }
 
 // ── SCREEN 5: COOLING ADEQUACY ────────────────────────────────────────────────
-function S5_CoolWell({ brand, t, onSelect, onBack, onCG }) {
+function S5_CoolWell({ brand, t, onSelect, onBack, onCG, onSave }) {
   const opts = [
     { id: "yes", label: t.coolYes, blue: true },
     { id: "used_to", label: t.coolUsed, blue: false },
@@ -1642,7 +1642,7 @@ function S5_CoolWell({ brand, t, onSelect, onBack, onCG }) {
     { id: "unsure", label: t.coolNotSure, blue: false },
   ];
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.coolWell}</h1>
       </div>
@@ -1660,9 +1660,9 @@ function S5_CoolWell({ brand, t, onSelect, onBack, onCG }) {
 }
 
 // ── SCREEN 6: FLOOD ZONE ──────────────────────────────────────────────────────
-function S6_FloodZone({ brand, t, onSelect, onBack, onCG }) {
+function S6_FloodZone({ brand, t, onSelect, onBack, onCG, onSave }) {
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.floodZone}</h1>
       </div>
@@ -1678,9 +1678,9 @@ function S6_FloodZone({ brand, t, onSelect, onBack, onCG }) {
 }
 
 // ── SCREEN 7: SYSTEM AGE ──────────────────────────────────────────────────────
-function S7_SystemAge({ brand, t, onSelect, onBack, onCG }) {
+function S7_SystemAge({ brand, t, onSelect, onBack, onCG, onSave }) {
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 23, fontWeight: 900, color: C.navy, margin: 0 }}>{t.systemAge}</h1>
       </div>
@@ -1696,9 +1696,9 @@ function S7_SystemAge({ brand, t, onSelect, onBack, onCG }) {
 }
 
 // ── SCREEN 8: HOA ─────────────────────────────────────────────────────────────
-function S8_HOA({ brand, t, onSelect, onBack, onCG }) {
+function S8_HOA({ brand, t, onSelect, onBack, onCG, onSave }) {
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>{t.hoaTitle}</h1>
       </div>
@@ -1714,14 +1714,14 @@ function S8_HOA({ brand, t, onSelect, onBack, onCG }) {
 }
 
 // ── SCREEN 9: SYSTEM TYPE ─────────────────────────────────────────────────────
-function S9_SystemType({ brand, t, onSelect, onBack, onCG }) {
+function S9_SystemType({ brand, t, onSelect, onBack, onCG, onSave }) {
   const opts = [
     { id: "electric", label: t.sysElectric, sub: t.sysElectricSub, blue: true },
     { id: "package", label: t.sysPackage, sub: t.sysPackageSub, blue: false },
     { id: "gas", label: t.sysGas, sub: t.sysGasSub, blue: true },
   ];
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>{t.systemTypeTitle}</h1>
       </div>
@@ -1809,7 +1809,7 @@ function S10_Preparing({ brand, t, onDone, quoteReady }) {
 }
 
 // ── SCREEN 11: ESTIMATE READY ─────────────────────────────────────────────────
-function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG }) {
+function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG, onSave }) {
   const { property, answers, adderTotal, allEquipment } = quote;
   const homeType = answers.detectedHomeType || property.type || "site-built";
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell, homeType);
@@ -1821,7 +1821,7 @@ function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG }) {
     : "Gas Furnace System";
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack={false} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack={false} showSave onSave={onSave}>
       <div style={{ padding: "16px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: 0 }}>{t.estimateReady}</h1>
       </div>
@@ -1854,7 +1854,7 @@ function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG }) {
 }
 
 // ── SCREEN 12: CHOOSE BRAND FAMILY ────────────────────────────────────────────
-function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG }) {
+function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG, onSave }) {
   const families = [
     { id: "Budget-Friendly", label: t.budgetFriendly, sub: t.budgetFriendlySub, blue: true },
     { id: "Commonly Purchased", label: t.commonlyPurchased, sub: t.commonlyPurchasedSub, blue: false },
@@ -1862,7 +1862,7 @@ function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG }) {
     { id: "Premium Products", label: t.premiumProducts, sub: t.premiumProductsSub, blue: false },
   ];
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseFamilyTitle}</h1>
       </div>
@@ -1880,7 +1880,7 @@ function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG }) {
 }
 
 // ── SCREEN 13: CHOOSE BRAND ───────────────────────────────────────────────────
-function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG }) {
+function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG, onSave }) {
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
   const { property, answers } = quote;
@@ -1903,7 +1903,7 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG 
   }, [brandFamily]);
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseBrandTitle}</h1>
         <p style={{ fontSize: 13, color: C.navy, fontWeight: 600, margin: "6px 0 0" }}>{t.chooseBrandDesc}</p>
@@ -1926,7 +1926,7 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG 
 }
 
 // ── SCREEN 14: EQUIPMENT RESULTS ──────────────────────────────────────────────
-function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG }) {
+function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave }) {
   const [equipment, setEquipment] = useState([]);
   const [recommended, setRecommended] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1975,7 +1975,7 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
   );
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.recommendationTitle}</h1>
         <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{brandFamily} · {selectedBrand !== "recommended" ? selectedBrand : "All Brands"}</p>
@@ -2019,7 +2019,7 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
 }
 
 // ── SCREEN 15: SYSTEM DETAIL / REVIEW ─────────────────────────────────────────
-function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG }) {
+function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG, onSave }) {
   const { adderTotal } = quote;
   const total = (selectedEq.installation_price || 0) + adderTotal;
   const deposit = total * 0.5;
@@ -2027,7 +2027,7 @@ function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG
   const [emailSent, setEmailSent] = useState(false);
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.reviewTitle}</h1>
       </div>
@@ -2116,7 +2116,7 @@ function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG
 }
 
 // ── SCREEN 16: PERSONAL INFO ──────────────────────────────────────────────────
-function S16_PersonalInfo({ brand, t, onContinue, onBack, onCG }) {
+function S16_PersonalInfo({ brand, t, onContinue, onBack, onCG, onSave }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "", contactPref: "both" });
   const valid = form.name && form.email && form.phone;
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -2632,6 +2632,64 @@ function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo,
   );
 }
 
+// ── SAVE PROGRESS MODAL ───────────────────────────────────────────────────────
+function SaveProgressModal({ t, lang, customerInfo, onClose, onSaved }) {
+  const [email, setEmail] = useState(customerInfo?.email || "");
+  const [name, setName] = useState(customerInfo?.name || "");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSend = async () => {
+    if (!email.trim()) return;
+    setSending(true);
+    setError("");
+    try {
+      await onSaved(email.trim(), name.trim());
+      setSent(true);
+    } catch(e) {
+      setError("Could not save — please try again.");
+    }
+    setSending(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(22,62,100,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={onClose}>
+      <div style={{ background: C.white, borderRadius: 24, padding: 28, maxWidth: 360, width: "100%", boxShadow: "10px 10px 30px rgba(0,0,0,0.3)", border: `2px solid ${C.blue}` }} onClick={e => e.stopPropagation()}>
+        {sent ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <h2 style={{ fontSize: 18, fontWeight: 900, color: C.navy, margin: "0 0 8px" }}>{t.savedTitle}</h2>
+            <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5, marginBottom: 20 }}>{t.savedDesc}</p>
+            <BlueBtn onClick={onClose}>{lang === "es" ? "Continuar" : "Continue"}</BlueBtn>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 36, textAlign: "center", marginBottom: 8 }}>💾</div>
+            <h2 style={{ fontSize: 18, fontWeight: 900, color: C.navy, margin: "0 0 8px", textAlign: "center" }}>
+              {lang === "es" ? "Guardar Su Progreso" : "Save Your Progress"}
+            </h2>
+            <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5, marginBottom: 16, textAlign: "center" }}>
+              {lang === "es" ? "Le enviaremos un enlace para continuar donde lo dejó, en cualquier dispositivo." : "We'll email you a link to pick up right where you left off, on any device."}
+            </p>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder={lang === "es" ? "Su nombre (opcional)" : "Your name (optional)"}
+              style={{ width: "100%", border: `2px solid ${C.blue}`, borderRadius: 10, padding: "11px 14px", fontSize: 14, outline: "none", fontFamily: FONT, marginBottom: 10, boxSizing: "border-box" }} />
+            <input value={email} onChange={e => setEmail(e.target.value)} placeholder={lang === "es" ? "Su correo electrónico" : "Your email address"} type="email"
+              style={{ width: "100%", border: `2px solid ${C.blue}`, borderRadius: 10, padding: "11px 14px", fontSize: 14, outline: "none", fontFamily: FONT, marginBottom: 14, boxSizing: "border-box" }} />
+            {error && <p style={{ color: "#dc2626", fontSize: 12, fontWeight: 700, textAlign: "center", marginBottom: 10 }}>{error}</p>}
+            <BlueBtn onClick={handleSend} disabled={!email.trim() || sending}>
+              {sending ? "..." : (lang === "es" ? "Enviar Enlace" : "Send Me The Link")}
+            </BlueBtn>
+            <button onClick={onClose} style={{ width: "100%", background: "none", border: "none", color: "#64748b", fontSize: 12, fontWeight: 700, marginTop: 10, cursor: "pointer", fontFamily: FONT }}>
+              {lang === "es" ? "Cancelar" : "Cancel"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── LANGUAGE TOGGLE ───────────────────────────────────────────────────────────
 function LangToggle({ lang, setLang }) {
   return (
@@ -2658,11 +2716,88 @@ export default function App() {
   const [bookingRef, setBookingRef] = useState(null);
   const [installDate, setInstallDate] = useState(null);
   const [showCG, setShowCG] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [resumeChecked, setResumeChecked] = useState(false);
 
   const brand = BRAND[lang];
   const t = T[lang];
   const go = s => setScreen(s);
   const ans = (k, v) => setAnswers(p => ({ ...p, [k]: v }));
+
+  // Build a full snapshot of current state for saving/auto-save
+  const buildStateSnapshot = () => ({
+    lang, screen, property, answers, quote, brandFamily,
+    selectedBrand, selectedEq, customerInfo,
+  });
+
+  // Restore state from a snapshot (used by both localStorage resume and email link resume)
+  const restoreFromSnapshot = (snap) => {
+    if (!snap) return;
+    if (snap.lang) setLang(snap.lang);
+    if (snap.property) setProperty(snap.property);
+    if (snap.answers) setAnswers(snap.answers);
+    if (snap.quote) setQuote(snap.quote);
+    if (snap.brandFamily) setBrandFamily(snap.brandFamily);
+    if (snap.selectedBrand) setSelectedBrand(snap.selectedBrand);
+    if (snap.selectedEq) setSelectedEq(snap.selectedEq);
+    if (snap.customerInfo) setCustomerInfo(snap.customerInfo);
+    if (snap.screen) setScreen(snap.screen);
+  };
+
+  // Auto-save to localStorage on every meaningful state change (after landing screen)
+  useEffect(() => {
+    if (screen === "s1" || !resumeChecked) return;
+    try {
+      localStorage.setItem("acc_progress", JSON.stringify(buildStateSnapshot()));
+    } catch(e) {}
+  }, [screen, property, answers, quote, brandFamily, selectedBrand, selectedEq, customerInfo, resumeChecked]);
+
+  // On first load: check for email-link resume token, then fall back to localStorage
+  useEffect(() => {
+    const checkResume = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const resumeToken = params.get("resume");
+
+      if (resumeToken) {
+        try {
+          const r = await fetch(`/api/resume-progress?token=${resumeToken}`);
+          const data = await r.json();
+          if (data.stateSnapshot && !data.expired) {
+            restoreFromSnapshot(data.stateSnapshot);
+            // Clean the URL so refreshing doesn't re-trigger this
+            window.history.replaceState({}, "", window.location.pathname);
+            setResumeChecked(true);
+            return;
+          }
+        } catch(e) { console.warn("Resume link error:", e); }
+      }
+
+      // Fall back to localStorage auto-save
+      try {
+        const saved = localStorage.getItem("acc_progress");
+        if (saved) {
+          const snap = JSON.parse(saved);
+          restoreFromSnapshot(snap);
+        }
+      } catch(e) {}
+      setResumeChecked(true);
+    };
+    checkResume();
+  }, []);
+
+  // Actually save progress + send resume link email
+  const saveProgressNow = async (email, name) => {
+    const snapshot = buildStateSnapshot();
+    const r = await fetch("/api/save-progress", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name, stateSnapshot: snapshot, lang }),
+    });
+    const data = await r.json();
+    if (!data.success) throw new Error(data.error || "Save failed");
+    if (!customerInfo?.email) {
+      setCustomerInfo(p => ({ ...(p || {}), email, name: name || p?.name }));
+    }
+  };
 
   // Build quote object with adder calculation
   const buildQuote = useCallback(async (prop, curAnswers) => {
@@ -2701,11 +2836,17 @@ export default function App() {
           brandFamily, selectedEq,
         }} />}
 
-      {screen === "s1" && <S1_Landing brand={brand} t={t} onStart={() => go("s2")} onCG={() => setShowCG(true)} />}
+      {showSaveModal && (
+        <SaveProgressModal t={t} lang={lang} customerInfo={customerInfo}
+          onClose={() => setShowSaveModal(false)}
+          onSaved={saveProgressNow} />
+      )}
+
+      {screen === "s1" && <S1_Landing brand={brand} t={t} onStart={() => go("s2")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s2" && <S2_Address brand={brand} t={t}
         onFound={p => { setProperty(p); go("s3"); }}
-        onBack={() => go("s1")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s1")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s3" && <S3_ConfirmHome brand={brand} t={t} property={property}
         onConfirm={(verified) => {
@@ -2726,7 +2867,7 @@ export default function App() {
           }
           go("s4");
         }}
-        onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} />}
+        onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s4" && <S4_Intent brand={brand} t={t}
         onSelect={id => {
@@ -2734,23 +2875,23 @@ export default function App() {
           if (id === "minisplit") { alert("Mini-split path — Phase 2"); return; }
           go("s5");
         }}
-        onBack={() => go("s3")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s3")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s5" && <S5_CoolWell brand={brand} t={t}
         onSelect={v => { ans("coolWell", v); go("s6"); }}
-        onBack={() => go("s4")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s4")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s6" && <S6_FloodZone brand={brand} t={t}
         onSelect={v => { ans("floodZone", v); go("s7"); }}
-        onBack={() => go("s5")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s5")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s7" && <S7_SystemAge brand={brand} t={t}
         onSelect={v => { ans("systemAge", v); go("s8"); }}
-        onBack={() => go("s6")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s6")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s8" && <S8_HOA brand={brand} t={t}
         onSelect={v => { ans("hoa", v); go("s9"); }}
-        onBack={() => go("s7")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s7")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s9" && <S9_SystemType brand={brand} t={t}
         onSelect={v => {
@@ -2759,13 +2900,13 @@ export default function App() {
           go("s10");
           buildQuote(property, newAnswers);
         }}
-        onBack={() => go("s8")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s8")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!quote} />}
 
       {screen === "s11" && quote && <S11_EstimateReady brand={brand} t={t} quote={quote}
         onChooseFamily={() => go("s12")}
-        onCG={() => setShowCG(true)} />}
+        onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
       {screen === "s11" && !quote && (
         <Shell t={t} brand={brand} onCG={() => setShowCG(true)} showBack onBack={() => go("s9")}>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
@@ -2779,30 +2920,30 @@ export default function App() {
 
       {screen === "s12" && <S12_BrandFamily brand={brand} t={t} quote={quote}
         onSelect={f => { setBrandFamily(f); go("s13"); }}
-        onBack={() => go("s11")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s11")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s13" && <S13_ChooseBrand brand={brand} t={t} quote={quote} brandFamily={brandFamily}
         onSelect={b => { setSelectedBrand(b); go("s14"); }}
-        onBack={() => go("s12")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s12")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote}
         brandFamily={brandFamily} selectedBrand={selectedBrand}
         onSelect={eq => { setSelectedEq(eq); go("s15"); }}
-        onBack={() => go("s13")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s13")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote}
         selectedEq={selectedEq}
         onApprove={() => go("s16")}
-        onBack={() => go("s14")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s14")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s16" && <S16_PersonalInfo brand={brand} t={t}
         onContinue={info => { setCustomerInfo(info); go("checkout"); }}
-        onBack={() => go("s15")} onCG={() => setShowCG(true)} />}
+        onBack={() => go("s15")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "checkout" && selectedEq && quote && (
         <CheckoutPayment brand={brand} t={t} quote={quote} selectedEq={selectedEq} customerInfo={customerInfo}
           onSelectMethod={method => go(`pay_${method}`)}
-          onBack={() => go("s16")} onCG={() => setShowCG(true)} />
+          onBack={() => go("s16")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_card" && selectedEq && (
@@ -2810,14 +2951,14 @@ export default function App() {
           deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
           customerInfo={customerInfo}
           onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_ach" && selectedEq && (
         <CheckoutACH brand={brand} t={t}
           deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
           onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_ftl" && selectedEq && (
@@ -2825,7 +2966,7 @@ export default function App() {
           total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           customerInfo={customerInfo}
           onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_microf" && selectedEq && (
@@ -2833,7 +2974,7 @@ export default function App() {
           total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           customerInfo={customerInfo}
           onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "schedule" && (
@@ -2844,7 +2985,7 @@ export default function App() {
             setBookingRef(ref);
             go("confirmation");
           }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "confirmation" && (
