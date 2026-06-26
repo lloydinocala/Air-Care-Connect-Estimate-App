@@ -827,13 +827,21 @@ REGLAS:
 - Mantén las respuestas conversacionales y concisas — 2 a 4 oraciones generalmente es suficiente
 - Nunca seas insistente`;
 
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
+      const r = await fetch("/api/comfort-guide", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 600, system: sys, messages: next.map(m => ({ role: m.role, content: m.content })) }),
+        body: JSON.stringify({ system: sys, messages: next.map(m => ({ role: m.role, content: m.content })) }),
       });
       const d = await r.json();
-      setMsgs(p => [...p, { role: "assistant", content: d.content?.[0]?.text || "Please try again." }]);
-    } catch { setMsgs(p => [...p, { role: "assistant", content: "Connection issue — please try again." }]); }
+      if (d.text) {
+        setMsgs(p => [...p, { role: "assistant", content: d.text }]);
+      } else {
+        console.error("Comfort Guide error:", d.error);
+        setMsgs(p => [...p, { role: "assistant", content: "I'm having trouble connecting right now — please try again in a moment." }]);
+      }
+    } catch (err) {
+      console.error("Comfort Guide fetch error:", err);
+      setMsgs(p => [...p, { role: "assistant", content: "Connection issue — please try again." }]);
+    }
     setBusy(false);
   };
 
@@ -2684,3 +2692,4 @@ export default function App() {
     </div>
   );
 }
+
