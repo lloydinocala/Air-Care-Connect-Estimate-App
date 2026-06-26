@@ -2745,10 +2745,16 @@ export default function App() {
   };
 
   // Auto-save to localStorage on every meaningful state change (after landing screen)
+  // Skip entirely on s1 (nothing to save) and on confirmation (booking is done — clear instead)
   useEffect(() => {
-    if (screen === "s1" || !resumeChecked) return;
+    if (!resumeChecked) return;
+    if (screen === "s1") return;
     try {
-      localStorage.setItem("acc_progress", JSON.stringify(buildStateSnapshot()));
+      if (screen === "confirmation") {
+        localStorage.removeItem("acc_progress");
+      } else {
+        localStorage.setItem("acc_progress", JSON.stringify(buildStateSnapshot()));
+      }
     } catch(e) {}
   }, [screen, property, answers, quote, brandFamily, selectedBrand, selectedEq, customerInfo, resumeChecked]);
 
@@ -3035,6 +3041,7 @@ export default function App() {
       {screen === "confirmation" && (
         <CheckoutConfirmation brand={brand} t={t} bookingRef={bookingRef} installDate={installDate} customerInfo={customerInfo}
           onDone={() => {
+            try { localStorage.removeItem("acc_progress"); } catch(e) {}
             setScreen("s1"); setProperty(null); setAnswers({}); setQuote(null);
             setBrandFamily(null); setSelectedBrand(null); setSelectedEq(null);
             setCustomerInfo(null); setPaymentInfo(null); setBookingRef(null); setInstallDate(null);
