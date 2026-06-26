@@ -692,8 +692,74 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
   );
 }
 
-// ── COMFORT GUIDE ─────────────────────────────────────────────────────────────
-function ComfortGuide({ lang, brand, t, onClose }) {
+// ── COMFORT GUIDE: CONTEXT BUILDER ────────────────────────────────────────────
+// Builds a rich, current snapshot of where the customer is in their journey
+// so Comfort Guide can give genuinely relevant, grounded answers
+function buildCustomerContext(ctx) {
+  if (!ctx) return "The customer has not started their estimate yet — they're on the landing page.";
+
+  const parts = [];
+
+  if (ctx.property?.address) {
+    parts.push(`Customer's property address: ${ctx.property.address}`);
+    if (ctx.property.beds) parts.push(`Home details: ${ctx.property.beds} bed, ${ctx.property.baths} bath, ${ctx.property.sqft} sqft, built ${ctx.property.year}, type: ${ctx.property.type}`);
+  }
+
+  if (ctx.answers) {
+    const a = ctx.answers;
+    if (a.systemType) {
+      const sysLabel = { electric: "Split Heat Pump (all electric)", package: "Package Unit (all outdoor, common in manufactured homes)", gas: "Gas Furnace + AC System" }[a.systemType];
+      parts.push(`Current system type: ${sysLabel}`);
+    }
+    if (a.coolWell) {
+      const coolLabel = { yes: "cools the home well currently", used_to: "used to cool well but has declined", struggled: "has always struggled to cool the home", unsure: "customer isn't sure if it cools adequately" }[a.coolWell];
+      parts.push(`Cooling performance: ${coolLabel}`);
+    }
+    if (a.floodZone) parts.push(`Flood zone: ${a.floodZone}`);
+    if (a.systemAge) parts.push(`Current system age: ${a.systemAge === "old" ? "more than 15 years old" : a.systemAge === "new" ? "less than 15 years old" : "unknown"}`);
+    if (a.hoa) parts.push(`HOA approval required: ${a.hoa}`);
+  }
+
+  if (ctx.tons) {
+    parts.push(`Calculated system size needed: ${ctx.tons} tons`);
+  }
+
+  if (ctx.brandFamily) {
+    parts.push(`Customer is currently browsing the "${ctx.brandFamily}" brand family`);
+  }
+
+  if (ctx.selectedEq) {
+    const eq = ctx.selectedEq;
+    const total = (eq.installation_price || 0) + (ctx.adderTotal || 0);
+    parts.push(`Customer is currently viewing/selected this specific system: ${eq.outdoor_brand} ${eq.outdoor_series}, ${eq.size_tons} tons, SEER2 ${eq.seer2}, priced at $${total.toLocaleString()} installed`);
+    if (eq.quality_pledge) {
+      const pledgeYears = eq.quality_pledge_years === 999 ? "Lifetime" : `${eq.quality_pledge_years}-Year`;
+      parts.push(`This system includes a ${pledgeYears} Quality Pledge from ${eq.quality_pledge_issuer} (compressor or full outdoor unit replacement, customer's choice, at no cost, if it fails within the covered period due to a manufacturer defect)`);
+    }
+  }
+
+  if (ctx.screen) {
+    const screenLabels = {
+      s1: "Landing page", s2: "Entering their address", s3: "Confirming their home details",
+      s4: "Choosing what to estimate", s5: "Answering cooling performance question",
+      s6: "Answering flood zone question", s7: "Answering system age question",
+      s8: "Answering HOA question", s9: "Identifying their current system type",
+      s10: "Waiting for their estimate to calculate", s11: "Viewing their price range, about to choose a brand family",
+      s12: "Choosing a brand family", s13: "Choosing a specific brand",
+      s14: "Comparing specific equipment options", s15: "Reviewing full details of a selected system",
+      s16: "Entering contact information", checkout: "Choosing a payment method",
+      pay_card: "Entering card payment details", pay_ach: "Entering bank transfer details",
+      pay_ftl: "About to apply for FTL financing", pay_microf: "About to apply for Microf lease-to-own",
+      schedule: "Choosing an installation date", confirmation: "Booking confirmed",
+    };
+    parts.push(`Current screen: ${screenLabels[ctx.screen] || ctx.screen}`);
+  }
+
+  return parts.length > 0 ? parts.join(". ") + "." : "The customer has not started their estimate yet.";
+}
+
+// ── COMFORT GUIDE ──────────────────────────────────────────────────────────────
+function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
   const [msgs, setMsgs] = useState([{ role: "assistant", content: t.cgWelcome }]);
   const [input, setInput] = useState(""); const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
@@ -703,13 +769,67 @@ function ComfortGuide({ lang, brand, t, onClose }) {
     if (!input.trim() || busy) return;
     const next = [...msgs, { role: "user", content: input.trim() }];
     setMsgs(next); setInput(""); setBusy(true);
+
+    const contextSnapshot = buildCustomerContext(customerContext);
+
     try {
       const sys = lang === "en"
-        ? `You are the Comfort Guide for Air-Care Connect, a professional HVAC replacement service in Central Florida (Marion, Lake, Sumter, Levy, Citrus, Alachua Counties + The Villages). Help customers with AC replacement, equipment types, SEER ratings, brands (Goodman, Nortek, Ducane, Bryant, Carrier, etc.), financing (FTL, Affirm, ACH, credit card). Key facts: 45-day price guarantee. Installation always includes: equipment, concrete pad, new copper refrigerant lines, hurricane clips, float switch, UV light, 2" filter rack, labor, permits, old system haul-away. Two techs per job. No after-hours surcharge. 50% deposit at booking (waived for FTL). Quality Pledge: Nortek brands offer 1-10 year pledge, Goodman offers Lifetime — customer chooses new compressor OR entire outdoor unit replacement. Be warm, concise, reassuring. Never pushy.`
-        : `Eres el Guía de Confort de Aire Azul en el Centro de Florida. Ayuda con reemplazo de AC, tipos de equipo, SEER, marcas, financiamiento (FTL, Affirm, ACH, tarjeta). Garantía 45 días. La instalación incluye todo. Dos técnicos. Sin recargo nocturno. 50% depósito (sin depósito con FTL). Responde en español. Sé cálido y conciso.`;
+        ? `You are the Comfort Guide — a warm, knowledgeable virtual advisor for Air-Care Connect, a professional HVAC replacement company serving Marion, Lake, Sumter, Levy, Citrus, and Alachua Counties plus The Villages in Central Florida.
+
+YOUR ROLE: Help customers feel confident and informed as they get an instant AC replacement quote through this app, entirely without sales pressure. You are not a salesperson — you are a trusted guide. Your job is to remove confusion and hesitation so the customer can make their own confident decision.
+
+CURRENT CUSTOMER CONTEXT (use this to give specific, relevant answers — never generic ones if specific info is available):
+${contextSnapshot}
+
+KEY FACTS ABOUT AIR-CARE CONNECT:
+- Every quote is guaranteed for 45 days — the price will not increase
+- Installation always includes: the system itself, concrete pad, brand new copper refrigerant lines, hurricane clips, float switch to prevent drain backups, UV light, a 2-inch filter rack, all labor, all permits, and haul-away of the old system
+- Every home gets a 10-Year Limited Parts Warranty — this is required by Florida law on every system, no exceptions
+- Some systems also carry a separate "Quality Pledge" from the manufacturer (Nortek brands offer 1 to 10 years, Goodman offers some systems with a Lifetime pledge) — if the compressor fails within the covered period due to a manufacturer defect, the customer chooses between a new compressor or a full outdoor unit replacement, at no cost. This excludes damage from abuse, neglect, or natural disaster, and maintenance records may be requested.
+- Two technicians are sent on every single job
+- No after-hours or weekend surcharges, ever
+- A 50% deposit is required to schedule installation — EXCEPT when financing through FTL or Microf, where no deposit is needed today
+- Payment options: Credit/debit card (instant, via Stripe), ACH bank transfer (no card fees, 1-3 day verification), FTL financing (traditional credit-based loan, customer owns the system immediately), Microf lease-to-own (flexible approval, doesn't require great credit, customer leases then owns later)
+- Brand families: Budget-Friendly (practical, reliable), Commonly Purchased (best balance of price/features), Trending in 2026 (CrossOver side-discharge systems — currently our most efficient and innovative option), Premium Products (top-tier efficiency and features)
+- The customer never has to talk to a salesperson or schedule an in-home visit just to get a real, guaranteed price
+
+GUARDRAILS:
+- NEVER quote a specific price yourself, even if asked — always say "you'll see your exact guaranteed price as you continue through the app" and gently redirect them back into the flow
+- NEVER guarantee approval for FTL or Microf financing — those are third-party decisions
+- Stay strictly on-topic: HVAC, the app process, financing options, equipment differences, the company's policies. Politely decline unrelated topics (general chit-chat is fine briefly, but redirect)
+- If a customer seems frustrated or stuck, acknowledge it warmly and offer to explain whatever is confusing them, or remind them they can always go back a screen
+- If asked something you genuinely don't know (e.g. a hyper-specific technical detail not listed here), be honest that you don't have that detail and suggest they can ask during their confirmation call with the team
+- Keep responses conversational and concise — 2-4 sentences is usually enough. This is a chat, not an essay.
+- Never be pushy. If someone seems hesitant, your job is to inform and reassure, not to close a sale.`
+        : `Eres el Guía de Confort — un asesor virtual cálido y conocedor para Aire Azul, una empresa profesional de reemplazo de HVAC que sirve los condados de Marion, Lake, Sumter, Levy, Citrus y Alachua además de The Villages en el Centro de Florida.
+
+TU ROL: Ayudar a los clientes a sentirse seguros e informados mientras obtienen una cotización instantánea de reemplazo de AC a través de esta aplicación, completamente sin presión de ventas.
+
+CONTEXTO ACTUAL DEL CLIENTE (usa esto para dar respuestas específicas y relevantes):
+${contextSnapshot}
+
+DATOS CLAVE SOBRE AIRE AZUL:
+- Cada cotización está garantizada por 45 días
+- La instalación siempre incluye: el sistema, plataforma de concreto, líneas de cobre nuevas, clips de huracán, interruptor flotante, luz UV, bastidor de filtro de 2 pulgadas, toda la mano de obra, todos los permisos, y retiro del sistema antiguo
+- Cada hogar recibe una Garantía de Partes Limitada de 10 años — requerido por la ley de Florida
+- Algunos sistemas también tienen una "Garantía de Calidad" del fabricante (1 a 10 años con marcas Nortek, de por vida con algunos sistemas Goodman)
+- Se envían dos técnicos en cada trabajo
+- Sin recargos por horas extras o fines de semana, nunca
+- Se requiere un depósito del 50% para programar la instalación — EXCEPTO con financiamiento FTL o Microf
+- Opciones de pago: Tarjeta de crédito/débito, transferencia bancaria ACH, financiamiento FTL, arrendamiento con opción a compra Microf
+- El cliente nunca tiene que hablar con un vendedor para obtener un precio real y garantizado
+
+REGLAS:
+- NUNCA cotices un precio específico tú mismo — siempre di que verán su precio garantizado exacto mientras continúan en la aplicación
+- NUNCA garantices la aprobación de financiamiento FTL o Microf
+- Mantente estrictamente en el tema: HVAC, el proceso de la aplicación, opciones de financiamiento, diferencias de equipos, políticas de la empresa
+- Responde siempre en español
+- Mantén las respuestas conversacionales y concisas — 2 a 4 oraciones generalmente es suficiente
+- Nunca seas insistente`;
+
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, system: sys, messages: next.map(m => ({ role: m.role, content: m.content })) }),
+        body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 600, system: sys, messages: next.map(m => ({ role: m.role, content: m.content })) }),
       });
       const d = await r.json();
       setMsgs(p => [...p, { role: "assistant", content: d.content?.[0]?.text || "Please try again." }]);
@@ -2400,7 +2520,12 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: "#b0d8ec" }}>
       <FontLoader />
       <LangToggle lang={lang} setLang={setLang} />
-      {showCG && <ComfortGuide lang={lang} brand={brand} t={t} onClose={() => setShowCG(false)} />}
+      {showCG && <ComfortGuide lang={lang} brand={brand} t={t} onClose={() => setShowCG(false)}
+        customerContext={{
+          screen, property, answers,
+          tons: quote?.tons, adderTotal: quote?.adderTotal,
+          brandFamily, selectedEq,
+        }} />}
 
       {screen === "s1" && <S1_Landing brand={brand} t={t} onStart={() => go("s2")} onCG={() => setShowCG(true)} />}
 
