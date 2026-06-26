@@ -2979,10 +2979,54 @@ export default function App() {
 
       {screen === "schedule" && (
         <CheckoutCalendar brand={brand} t={t} paymentInfo={paymentInfo}
-          onConfirm={date => {
+          onConfirm={async (date) => {
             setInstallDate(date.available_date);
-            const ref = `ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`;
-            setBookingRef(ref);
+
+            const total = (selectedEq?.installation_price || 0) + (quote?.adderTotal || 0);
+            const isFinancing = paymentInfo?.method === "ftl" || paymentInfo?.method === "microf";
+
+            try {
+              const bookingPayload = {
+                customer_name: customerInfo?.name || null,
+                customer_email: customerInfo?.email || null,
+                customer_phone: customerInfo?.phone || null,
+                contact_preference: customerInfo?.contactPref || null,
+                install_date: date.available_date,
+                install_address: property?.address || null,
+                payment_method: paymentInfo?.method || null,
+                payment_status: isFinancing ? "pending" : "deposit_paid",
+                deposit_amount: isFinancing ? 0 : Math.round(total * 0.5),
+                financing_company: isFinancing ? paymentInfo.method : null,
+                financing_status: isFinancing ? "pending" : "not_applicable",
+                financing_applied_at: isFinancing ? new Date().toISOString() : null,
+                slot_held_until: new Date(Date.now() + (paymentInfo?.holdHours || 0) * 3600000).toISOString(),
+                booking_status: "confirmed",
+                organization_id: 1,
+              };
+
+              const r = await fetch(`${SUPABASE_URL}/rest/v1/bookings`, {
+                method: "POST",
+                headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", Prefer: "return=representation" },
+                body: JSON.stringify(bookingPayload),
+              });
+              const data = await r.json();
+              const created = Array.isArray(data) ? data[0] : data;
+
+              setBookingRef(created?.booking_reference || `ACB-${new Date().getFullYear()}-PENDING`);
+
+              // Mark the availability slot as booked
+              if (date.available_date) {
+                await fetch(`${SUPABASE_URL}/rest/v1/availability?available_date=eq.${date.available_date}`, {
+                  method: "PATCH",
+                  headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+                  body: JSON.stringify({ booked_slots: (date.booked_slots || 0) + 1 }),
+                });
+              }
+            } catch(e) {
+              console.error("Booking creation error:", e);
+              setBookingRef(`ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`);
+            }
+
             go("confirmation");
           }}
           onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
