@@ -774,6 +774,7 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
   // Actually send the estimate via email + SMS, and save the quote to Supabase
   const sendEstimateToCustomer = async (name, email, phone) => {
     setSendStatus("sending");
+    const debugErrors = [];
     try {
       const eq = customerContext?.selectedEq;
       const total = eq ? (eq.installation_price || 0) + (customerContext?.adderTotal || 0) : null;
@@ -799,45 +800,68 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
       if (email) {
         const priceLine = total ? `$${total.toLocaleString()} installed` : "your custom estimate";
         const sysLine = eq ? `${eq.outdoor_brand} ${eq.outdoor_series} (${eq.size_tons} Ton, SEER2 ${eq.seer2})` : "your AC system";
-        await fetch("/api/send-email", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: email,
-            subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
-            htmlContent: `
-              <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-                <h2 style="color: #163E64;">${lang === "es" ? "Su Cotización" : "Your Quote"}</h2>
-                <p>${lang === "es" ? "Hola" : "Hi"} ${name || ""},</p>
-                <p>${lang === "es" ? "Aquí está el resumen de su cotización para" : "Here's a summary of your quote for"} ${address}:</p>
-                <div style="background:#f0f9ff; border:2px solid #00B0F0; border-radius:12px; padding:16px; margin:16px 0;">
-                  <strong>${sysLine}</strong><br/>
-                  <span style="font-size:24px; font-weight:900; color:#163E64;">${priceLine}</span>
+        try {
+          const emailResp = await fetch("/api/send-email", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: email,
+              subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
+              htmlContent: `
+                <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+                  <h2 style="color: #163E64;">${lang === "es" ? "Su Cotización" : "Your Quote"}</h2>
+                  <p>${lang === "es" ? "Hola" : "Hi"} ${name || ""},</p>
+                  <p>${lang === "es" ? "Aquí está el resumen de su cotización para" : "Here's a summary of your quote for"} ${address}:</p>
+                  <div style="background:#f0f9ff; border:2px solid #00B0F0; border-radius:12px; padding:16px; margin:16px 0;">
+                    <strong>${sysLine}</strong><br/>
+                    <span style="font-size:24px; font-weight:900; color:#163E64;">${priceLine}</span>
+                  </div>
+                  <p>${lang === "es" ? "Esta cotización está garantizada por 45 días." : "This quote is guaranteed for 45 days."}</p>
                 </div>
-                <p>${lang === "es" ? "Esta cotización está garantizada por 45 días. Puede continuar en cualquier momento abriendo la aplicación nuevamente." : "This quote is guaranteed for 45 days. You can pick up right where you left off anytime by reopening the app."}</p>
-                <p style="color:#64748b; font-size:13px;">${brand.name} — ${lang === "es" ? "Siempre Conectados, Siempre Cómodos" : "Always Connected, Always Comfortable"}</p>
-              </div>
-            `,
-          }),
-        });
+              `,
+            }),
+          });
+          const emailData = await emailResp.json().catch(() => ({}));
+          if (!emailResp.ok) {
+            debugErrors.push(`EMAIL (${emailResp.status}): ${emailData.error || "unknown error"}`);
+          }
+        } catch(e) {
+          debugErrors.push(`EMAIL (network): ${e.message}`);
+        }
       }
 
       // Send SMS if we have a phone number
       if (phone) {
         const priceLine = total ? `$${total.toLocaleString()}` : "your estimate";
         const smsBody = lang === "es"
-          ? `${brand.name}: Su cotización para ${address} es ${priceLine}, garantizada por 45 días. Continúe en la app cuando quiera.`
-          : `${brand.name}: Your quote for ${address} is ${priceLine}, guaranteed for 45 days. Pick up anytime in the app.`;
-        await fetch("/api/send-sms", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: phone, message: smsBody }),
-        });
+          ? `${brand.name}: Su cotización para ${address} es ${priceLine}, garantizada por 45 días.`
+          : `${brand.name}: Your quote for ${address} is ${priceLine}, guaranteed for 45 days.`;
+        try {
+          const smsResp = await fetch("/api/send-sms", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: phone, message: smsBody }),
+          });
+          const smsData = await smsResp.json().catch(() => ({}));
+          if (!smsResp.ok) {
+            debugErrors.push(`SMS (${smsResp.status}): ${smsData.error || "unknown error"}`);
+          }
+        } catch(e) {
+          debugErrors.push(`SMS (network): ${e.message}`);
+        }
       }
 
-      setSendStatus("sent");
+      if (debugErrors.length > 0) {
+        console.error("Send estimate errors:", debugErrors);
+        setSendStatus("error");
+        setMsgs(p => [...p, { role: "assistant", content: `⚠️ DEBUG INFO:\n${debugErrors.join("\n")}` }]);
+      } else {
+        setSendStatus("sent");
+      }
     } catch(e) {
       console.error("Send estimate error:", e);
       setSendStatus("error");
+      setMsgs(p => [...p, { role: "assistant", content: `⚠️ DEBUG INFO: ${e.message}` }]);
     }
+
   };
 
   const send = async () => {
@@ -3050,3 +3074,4 @@ export default function App() {
     </div>
   );
 }
+
