@@ -733,8 +733,13 @@ function buildCustomerContext(ctx) {
     const total = (eq.installation_price || 0) + (ctx.adderTotal || 0);
     parts.push(`Customer is currently viewing/selected this specific system: ${eq.outdoor_brand} ${eq.outdoor_series}, ${eq.size_tons} tons, SEER2 ${eq.seer2}, priced at $${total.toLocaleString()} installed`);
     if (eq.quality_pledge) {
-      const pledgeYears = eq.quality_pledge_years === 999 ? "Lifetime" : `${eq.quality_pledge_years}-Year`;
-      parts.push(`This system includes a ${pledgeYears} Quality Pledge from ${eq.quality_pledge_issuer} (compressor or full outdoor unit replacement, customer's choice, at no cost, if it fails within the covered period due to a manufacturer defect)`);
+      const isGoodmanLifetime = eq.quality_pledge_years === 999 && eq.quality_pledge_issuer === "Goodman";
+      if (isGoodmanLifetime) {
+        parts.push(`This system includes Goodman's Limited Lifetime Compressor Guarantee: covers the COMPRESSOR ONLY for as long as the original, registered purchaser owns and resides in the home. Does NOT transfer to a new owner. REQUIRES registration with Goodman to activate. All other components carry the standard 10-Year Parts Limited Warranty, not lifetime.`);
+      } else {
+        const pledgeYears = eq.quality_pledge_years;
+        parts.push(`This system includes a ${pledgeYears}-Year Quality Pledge from ${eq.quality_pledge_issuer}: if the compressor fails within ${pledgeYears} years due to a manufacturer defect, customer chooses new compressor OR full outdoor unit replacement, at no cost.`);
+      }
     }
   }
 
@@ -762,8 +767,78 @@ function buildCustomerContext(ctx) {
 function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
   const [msgs, setMsgs] = useState([{ role: "assistant", content: t.cgWelcome }]);
   const [input, setInput] = useState(""); const [busy, setBusy] = useState(false);
+  const [sendStatus, setSendStatus] = useState(null); // null | "sending" | "sent" | "error"
   const endRef = useRef(null);
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
+
+  // Actually send the estimate via email + SMS, and save the quote to Supabase
+  const sendEstimateToCustomer = async (name, email, phone) => {
+    setSendStatus("sending");
+    try {
+      const eq = customerContext?.selectedEq;
+      const total = eq ? (eq.installation_price || 0) + (customerContext?.adderTotal || 0) : null;
+      const address = customerContext?.property?.address || "your property";
+
+      // Save quote with contact info to Supabase
+      try {
+        await fetch(`${SUPABASE_URL}/rest/v1/quotes`, {
+          method: "POST",
+          headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify({
+            property_address: address,
+            ahri_ref: eq?.ahri_ref || null,
+            final_price: total,
+            brand_family_selected: customerContext?.brandFamily || null,
+            language: lang,
+            quote_status: "pending",
+          }),
+        });
+      } catch(e) { console.warn("Quote save error:", e); }
+
+      // Send email if we have one
+      if (email) {
+        const priceLine = total ? `$${total.toLocaleString()} installed` : "your custom estimate";
+        const sysLine = eq ? `${eq.outdoor_brand} ${eq.outdoor_series} (${eq.size_tons} Ton, SEER2 ${eq.seer2})` : "your AC system";
+        await fetch("/api/send-email", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: email,
+            subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
+            htmlContent: `
+              <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+                <h2 style="color: #163E64;">${lang === "es" ? "Su Cotización" : "Your Quote"}</h2>
+                <p>${lang === "es" ? "Hola" : "Hi"} ${name || ""},</p>
+                <p>${lang === "es" ? "Aquí está el resumen de su cotización para" : "Here's a summary of your quote for"} ${address}:</p>
+                <div style="background:#f0f9ff; border:2px solid #00B0F0; border-radius:12px; padding:16px; margin:16px 0;">
+                  <strong>${sysLine}</strong><br/>
+                  <span style="font-size:24px; font-weight:900; color:#163E64;">${priceLine}</span>
+                </div>
+                <p>${lang === "es" ? "Esta cotización está garantizada por 45 días. Puede continuar en cualquier momento abriendo la aplicación nuevamente." : "This quote is guaranteed for 45 days. You can pick up right where you left off anytime by reopening the app."}</p>
+                <p style="color:#64748b; font-size:13px;">${brand.name} — ${lang === "es" ? "Siempre Conectados, Siempre Cómodos" : "Always Connected, Always Comfortable"}</p>
+              </div>
+            `,
+          }),
+        });
+      }
+
+      // Send SMS if we have a phone number
+      if (phone) {
+        const priceLine = total ? `$${total.toLocaleString()}` : "your estimate";
+        const smsBody = lang === "es"
+          ? `${brand.name}: Su cotización para ${address} es ${priceLine}, garantizada por 45 días. Continúe en la app cuando quiera.`
+          : `${brand.name}: Your quote for ${address} is ${priceLine}, guaranteed for 45 days. Pick up anytime in the app.`;
+        await fetch("/api/send-sms", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: phone, message: smsBody }),
+        });
+      }
+
+      setSendStatus("sent");
+    } catch(e) {
+      console.error("Send estimate error:", e);
+      setSendStatus("error");
+    }
+  };
 
   const send = async () => {
     if (!input.trim() || busy) return;
@@ -785,13 +860,47 @@ KEY FACTS ABOUT AIR-CARE CONNECT:
 - Every quote is guaranteed for 45 days — the price will not increase
 - Installation always includes: the system itself, concrete pad, brand new copper refrigerant lines, hurricane clips, float switch to prevent drain backups, UV light, a 2-inch filter rack, all labor, all permits, and haul-away of the old system
 - Every home gets a 10-Year Limited Parts Warranty — this is required by Florida law on every system, no exceptions
-- Some systems also carry a separate "Quality Pledge" from the manufacturer (Nortek brands offer 1 to 10 years, Goodman offers some systems with a Lifetime pledge) — if the compressor fails within the covered period due to a manufacturer defect, the customer chooses between a new compressor or a full outdoor unit replacement, at no cost. This excludes damage from abuse, neglect, or natural disaster, and maintenance records may be requested.
+- Some systems also carry a separate "Quality Pledge" from the manufacturer, and the exact terms differ by brand — be precise about which one applies to whichever system is being discussed:
+  -- NORTEK brands (including Frigidaire and others under the Nortek umbrella): If the compressor fails within the stated period (1, 5, or 10 years depending on the specific model), the customer chooses between a brand new replacement compressor OR a complete replacement of the entire outdoor/condenser unit, at no cost. This excludes damage from abuse, neglect, or natural disaster, and maintenance records may be requested.
+  -- GOODMAN (select premium models only, called "Limited Lifetime Compressor Guarantee"): Covers the COMPRESSOR ONLY (not the full unit) for as long as the ORIGINAL, REGISTERED purchaser owns and resides in the home where it was installed. Three critical details to always mention if discussing this: (1) it does NOT transfer to a new owner if the home is sold, (2) it REQUIRES product registration with Goodman to activate — an unregistered unit typically defaults to a much shorter standard warranty instead, and (3) all OTHER components on the system (blower motors, coils, etc.) carry the standard 10-Year Parts Limited Warranty, not lifetime coverage. Never imply "Lifetime" means the whole system or that it transfers with the home — always clarify it's the compressor only, for the original registered owner.
+  -- Never use the word "Lifetime" without immediately clarifying these conditions if a customer asks about a Goodman system specifically.
+  -- IMPORTANT REASSURANCE: Air-Care Connect handles the registration requirement automatically — we register every system on the customer's behalf at no extra step for them, and send them a copy of the registration certificate for their records. This means customers never have to worry about missing the registration deadline or losing their coverage through an oversight — a real and meaningful advantage worth mentioning when a customer expresses any hesitation about warranty registration or paperwork.
 - Two technicians are sent on every single job
 - No after-hours or weekend surcharges, ever
 - A 50% deposit is required to schedule installation — EXCEPT when financing through FTL or Microf, where no deposit is needed today
 - Payment options: Credit/debit card (instant, via Stripe), ACH bank transfer (no card fees, 1-3 day verification), FTL financing (traditional credit-based loan, customer owns the system immediately), Microf lease-to-own (flexible approval, doesn't require great credit, customer leases then owns later)
 - Brand families: Budget-Friendly (practical, reliable), Commonly Purchased (best balance of price/features), Trending in 2026 (CrossOver side-discharge systems — currently our most efficient and innovative option), Premium Products (top-tier efficiency and features)
 - The customer never has to talk to a salesperson or schedule an in-home visit just to get a real, guaranteed price
+
+HOW TO HANDLE HESITATION AND OBJECTIONS (use genuinely, never as a manipulative script):
+When a customer expresses doubt, use this natural three-step pattern — acknowledge their feeling, normalize it by noting others have felt the same, then redirect to a genuine reason for confidence (not a forced pitch):
+
+-- "This seems expensive" / sticker shock: Acknowledge that a new AC system is a real investment and it's normal to feel that way. Note that many customers feel the same way at first glance. Then redirect to genuine value: the price shown is the COMPLETE installed price (no hidden add-ons after the fact), it's guaranteed for 45 days so there's no rush to decide today, and financing through FTL or Microf can spread the cost into a manageable monthly payment — mention the approximate monthly figures if you have them from context. If a higher-SEER option exists in their results, you can mention that a more efficient system often pays some of itself back over time through lower electric bills, but only raise this if they seem price-focused, not as an automatic upsell.
+
+-- "I want to think about it" / stalling: This is healthy and you should never discourage it — but customers stalling often just don't know what their actual next step is. Reassure them there's no rush given the 45-day guarantee, and offer a concrete, low-pressure next step: they can save their progress and come back anytime (mention the Save My Progress feature), or review the full system details again, or ask you any specific question holding them back right now. Never pressure someone who says they want to think it over — your job is to remove friction from THEIR next visit, not rush this one.
+
+-- "I want to get a few other quotes first": This is completely reasonable and you should say so genuinely. Then highlight what's different about getting a quote here versus elsewhere: they already have a real, complete, guaranteed price without a salesperson visit, an awkward in-home pitch, or any pressure tactics. If they're comparing, the price they have right now from Air-Care Connect is locked for 45 days — so they're free to compare with zero risk of losing this offer. If they'd still like an in-home visual assessment for their own peace of mind, mention that Air-Care Connect can arrange or refer one — but it's entirely optional, not a sales visit.
+
+URGENCY FRAMING (use honestly — this is a real guarantee, not manufactured pressure):
+The 45-day price guarantee is a genuine reason to act without being pushy about it. You can naturally mention that locking in today's price means no surprises later — manufacturer and material costs can shift, so getting the guarantee while it's active protects them from a price increase, not from "missing out" on something artificial. Frame it as protecting THEM, not as a countdown timer pressuring them.
+
+COMPETITIVE POSITIONING (only when relevant — never unprompted bashing of competitors):
+If a customer compares Air-Care Connect to "getting a few quotes" or traditional companies, emphasize these genuine differentiators:
+-- Full pricing transparency: they see the real, complete, installed price before ever speaking to anyone — no bait-and-switch after a technician shows up
+-- No mandatory home visit: most competitors require an in-home sales visit just to get a number. Here, an in-home visit is optional and available only if THEY want one for their own peace of mind — Air-Care Connect can arrange or refer this, but it's never required
+-- Financing privacy: they can explore and apply for financing entirely on their own time, privately, without a salesperson standing in their living room while they discuss their finances
+-- The 45-day guarantee removes the pressure that traditional "today-only" sales tactics create — there is no reason to decide on the spot, and that's intentional
+
+SEER / EFFICIENCY UPSELL GUIDANCE (reactive only — never volunteer this unprompted):
+Only discuss higher-SEER options and long-term energy savings if the customer specifically asks about SEER ratings, efficiency, or energy bills. When they do ask, explain genuinely: a higher SEER2 rating means the system uses less electricity to produce the same cooling, which can meaningfully lower monthly electric bills over the system's lifespan, especially in Florida's climate where AC runs most of the year. If their current equipment options include a higher-efficiency choice, you can mention it's available to compare. Never bring this up as an unprompted upsell — only respond to genuine interest.
+
+SENDING THE ESTIMATE (when a customer wants their quote emailed or texted to them):
+If a customer asks for their estimate to be sent to them, emailed, texted, or says something like "can you send this to me" or "I want to think about it, can I get this by email" — you can actually do this for real, not just promise it. Here's exactly how:
+1. Let them know you can send it right now, and ask for their name, email, and phone number (explain the phone number is so they can also get a text confirmation, which is optional but recommended)
+2. Collect these conversationally, one at a time is fine, don't make it feel like a rigid form
+3. Once you have all three (name, email, phone) AND they've confirmed they want it sent, use the send_estimate tool with that information
+4. Never claim you sent something or that "the office will send it" unless you actually call the tool — if you haven't collected all three pieces of information yet, keep gathering them naturally rather than falsely confirming a send
+5. If they only want to provide email and not phone (or vice versa), gently mention both are helpful but proceed with what they're comfortable sharing
 
 GUARDRAILS:
 - NEVER quote a specific price yourself, even if asked — always say "you'll see your exact guaranteed price as you continue through the app" and gently redirect them back into the flow
@@ -812,12 +921,43 @@ DATOS CLAVE SOBRE AIRE AZUL:
 - Cada cotización está garantizada por 45 días
 - La instalación siempre incluye: el sistema, plataforma de concreto, líneas de cobre nuevas, clips de huracán, interruptor flotante, luz UV, bastidor de filtro de 2 pulgadas, toda la mano de obra, todos los permisos, y retiro del sistema antiguo
 - Cada hogar recibe una Garantía de Partes Limitada de 10 años — requerido por la ley de Florida
-- Algunos sistemas también tienen una "Garantía de Calidad" del fabricante (1 a 10 años con marcas Nortek, de por vida con algunos sistemas Goodman)
+- Algunos sistemas también tienen una "Garantía de Calidad" del fabricante, y los términos exactos difieren según la marca:
+  -- Marcas NORTEK (incluyendo Frigidaire y otras bajo el grupo Nortek): Si el compresor falla dentro del período indicado (1, 5 o 10 años según el modelo), el cliente elige entre un compresor de reemplazo nuevo O el reemplazo completo de la unidad exterior/condensador, sin costo. Esto excluye daños por abuso, negligencia o desastre natural.
+  -- GOODMAN (solo modelos premium selectos, llamada "Garantía Limitada de Compresor de Por Vida"): Cubre SOLO EL COMPRESOR mientras el comprador ORIGINAL Y REGISTRADO sea propietario y resida en el hogar donde se instaló. Tres detalles críticos: (1) NO se transfiere a un nuevo propietario si se vende la casa, (2) REQUIERE registro del producto con Goodman para activarse, y (3) todos los DEMÁS componentes tienen la Garantía Limitada de Partes estándar de 10 años, no de por vida. Nunca uses la palabra "de por vida" sin aclarar estas condiciones si se pregunta sobre un sistema Goodman específicamente. TRANQUILIDAD IMPORTANTE: Air-Care Connect registra cada sistema en nombre del cliente automáticamente, sin pasos adicionales para ellos, y les enviamos una copia del certificado de registro. Esto significa que los clientes nunca tienen que preocuparse por perder la fecha límite de registro — una ventaja real que vale la pena mencionar.
 - Se envían dos técnicos en cada trabajo
 - Sin recargos por horas extras o fines de semana, nunca
 - Se requiere un depósito del 50% para programar la instalación — EXCEPTO con financiamiento FTL o Microf
 - Opciones de pago: Tarjeta de crédito/débito, transferencia bancaria ACH, financiamiento FTL, arrendamiento con opción a compra Microf
 - El cliente nunca tiene que hablar con un vendedor para obtener un precio real y garantizado
+
+CÓMO MANEJAR DUDAS Y OBJECIONES (de manera genuina, nunca como un guión manipulador):
+Cuando un cliente expresa duda, usa este patrón natural de tres pasos — reconoce su sentimiento, normalízalo notando que otros se han sentido igual, luego redirige a una razón genuina de confianza:
+
+-- "Esto parece caro": Reconoce que un nuevo sistema de AC es una inversión real y es normal sentirse así. Nota que muchos clientes se sienten igual al principio. Luego redirige al valor genuino: el precio mostrado es el precio COMPLETO instalado (sin cargos ocultos después), está garantizado por 45 días así que no hay prisa para decidir hoy, y el financiamiento con FTL o Microf puede dividir el costo en un pago mensual manejable.
+
+-- "Quiero pensarlo": Esto es saludable y nunca debes desalentarlo. Tranquiliza al cliente de que no hay prisa dado la garantía de 45 días, y ofrece un próximo paso concreto y sin presión: pueden guardar su progreso y volver en cualquier momento, revisar los detalles del sistema de nuevo, o preguntarte cualquier duda específica que tengan ahora.
+
+-- "Quiero obtener otras cotizaciones primero": Esto es completamente razonable. Luego destaca lo que es diferente: ya tienen un precio real, completo y garantizado sin una visita de vendedor. Si están comparando, el precio que tienen ahora está fijo por 45 días — así que son libres de comparar sin riesgo de perder esta oferta.
+
+ENCUADRE DE URGENCIA (usar honestamente — esta es una garantía real, no presión fabricada):
+La garantía de precio de 45 días es una razón genuina para actuar sin ser insistente. Puedes mencionar naturalmente que fijar el precio de hoy significa sin sorpresas después.
+
+POSICIONAMIENTO COMPETITIVO (solo cuando sea relevante):
+-- Transparencia total de precios: ven el precio real y completo antes de hablar con alguien
+-- Sin visita domiciliaria obligatoria: una visita en el hogar es opcional, disponible solo si ELLOS la quieren para su tranquilidad — Air-Care Connect puede coordinarla o referirla, pero nunca es requerida
+-- Privacidad en el financiamiento: pueden explorar y solicitar financiamiento en privado, sin un vendedor presente
+-- La garantía de 45 días elimina la presión de las tácticas de venta tradicionales de "solo hoy"
+
+GUÍA DE MEJORA SEER/EFICIENCIA (solo reactivo — nunca ofrecer sin que se pregunte):
+Solo discute opciones de mayor SEER y ahorro de energía a largo plazo si el cliente pregunta específicamente sobre clasificaciones SEER, eficiencia, o facturas de energía. Cuando preguntan, explica genuinamente que una clasificación SEER2 más alta significa que el sistema usa menos electricidad para producir el mismo enfriamiento.
+
+ENVIAR LA COTIZACIÓN (cuando un cliente quiere que se le envíe por correo o mensaje de texto):
+Si un cliente pide que su cotización se le envíe, por correo, por mensaje de texto, o dice algo como "¿puedes enviarme esto?" — puedes hacerlo realmente, no solo prometerlo. Así es exactamente:
+1. Avísale que puedes enviarlo ahora mismo, y pide su nombre, correo electrónico y número de teléfono (explica que el teléfono es para que también reciba una confirmación por mensaje de texto, opcional pero recomendado)
+2. Recopila esto de manera conversacional, uno a la vez está bien
+3. Una vez que tengas los tres (nombre, correo, teléfono) Y hayan confirmado que quieren que se envíe, usa la herramienta send_estimate con esa información
+4. Nunca afirmes que enviaste algo o que "la oficina lo enviará" a menos que realmente uses la herramienta
+5. Si solo quieren proporcionar correo y no teléfono (o viceversa), menciona suavemente que ambos son útiles pero procede con lo que estén dispuestos a compartir
 
 REGLAS:
 - NUNCA cotices un precio específico tú mismo — siempre di que verán su precio garantizado exacto mientras continúan en la aplicación
@@ -829,10 +969,34 @@ REGLAS:
 
       const r = await fetch("/api/comfort-guide", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ system: sys, messages: next.map(m => ({ role: m.role, content: m.content })) }),
+        body: JSON.stringify({
+          system: sys,
+          messages: next.map(m => ({ role: m.role, content: m.content })),
+          tools: [{
+            name: "send_estimate",
+            description: "Call this ONLY once you have collected the customer's name, email, AND phone number, AND they have clearly confirmed they want their estimate sent to them. Do not call this if any of the three fields are missing or unconfirmed.",
+            input_schema: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "Customer's full name" },
+                email: { type: "string", description: "Customer's email address" },
+                phone: { type: "string", description: "Customer's phone number for SMS" },
+              },
+              required: ["name", "email", "phone"],
+            },
+          }],
+        }),
       });
       const d = await r.json();
-      if (d.text) {
+
+      if (d.toolUse?.name === "send_estimate") {
+        const { name, email, phone } = d.toolUse.input;
+        setMsgs(p => [...p, { role: "assistant", content: d.text || (lang === "es" ? "¡Perfecto! Enviando su cotización ahora..." : "Perfect! Sending your estimate now...") }]);
+        await sendEstimateToCustomer(name, email, phone);
+        setMsgs(p => [...p, { role: "assistant", content: lang === "es"
+          ? `✅ ¡Listo! Hemos enviado su cotización a ${email}${phone ? " y por mensaje de texto a " + phone : ""}.`
+          : `✅ Done! We've sent your estimate to ${email}${phone ? " and via text to " + phone : ""}.` }]);
+      } else if (d.text) {
         setMsgs(p => [...p, { role: "assistant", content: d.text }]);
       } else {
         console.error("Comfort Guide error:", d.error);
@@ -861,6 +1025,8 @@ REGLAS:
           </div>
         ))}
         {busy && <div style={{ display: "flex", justifyContent: "flex-start" }}><div style={{ background: C.white, border: `1.5px solid ${C.gray}`, borderRadius: "18px 18px 18px 4px", padding: "10px 16px", fontSize: 14, color: C.blue, fontWeight: 700, boxShadow: SHADOW_SM }}>{t.cgThinking}</div></div>}
+        {sendStatus === "sending" && <div style={{ display: "flex", justifyContent: "center" }}><div style={{ background: "#f0f9ff", border: `1.5px solid ${C.blue}`, borderRadius: 12, padding: "8px 14px", fontSize: 12, color: C.blue, fontWeight: 700 }}>📤 Sending your estimate...</div></div>}
+        {sendStatus === "error" && <div style={{ display: "flex", justifyContent: "center" }}><div style={{ background: "#fef2f2", border: "1.5px solid #dc2626", borderRadius: 12, padding: "8px 14px", fontSize: 12, color: "#dc2626", fontWeight: 700 }}>⚠️ There was an issue sending — please try again</div></div>}
         <div ref={endRef} />
       </div>
       <div style={{ padding: "12px 16px 20px", background: C.white, borderTop: `2px solid ${C.gray}`, display: "flex", gap: 8 }}>
@@ -2692,4 +2858,3 @@ export default function App() {
     </div>
   );
 }
-
