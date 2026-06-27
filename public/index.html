@@ -8,11 +8,66 @@
     <title>Air-Care Connect — Get Your Instant Estimate</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #b0d8ec; font-family: 'Nunito', 'Segoe UI', sans-serif; }
+      body { background: #CAEEFB; font-family: 'Nunito', 'Segoe UI', sans-serif; }
+
+      #splash {
+        position: fixed;
+        inset: 0;
+        background: #CAEEFB;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.4s ease-out;
+      }
+      #splash.hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash svg {
+        animation: splashPulse 1.6s ease-in-out infinite;
+      }
+      @keyframes splashPulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.06); opacity: 0.85; }
+      }
+      #splash .splash-text {
+        margin-top: 16px;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #00B0F0;
+      }
+      #splash .splash-spinner {
+        margin-top: 22px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: 3px solid #D9D9D9;
+        border-top: 3px solid #00B0F0;
+        animation: splashSpin 0.9s linear infinite;
+      }
+      @keyframes splashSpin {
+        to { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-  </body>
-</html>
+
+    <!-- Static splash shown instantly, before React/JS bundle loads -->
+    <div id="splash">
+      <svg viewBox="0 0 100 100" width="84" height="84">
+        <defs>
+          <linearGradient id="splashGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00B0F0" />
+            <stop offset="100%" stop-color="#163E64" />
+          </linearGradient>
+        </defs>
+        <path d="M50 6 L84 6 Q91 6 91 13 L91 46 Q91 67 70 78 L50 78 Q29 67 29 46 L29 13 Q29 6 36 6 Z" fill="url(#splashGrad)" stroke="#fff" stroke-width="2.5" />
+        <line x1="50" y1="32" x2="50" y2="54" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        <line x1="39" y1="43" x2="61" y2="43" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        <line x1="42.5" y1="35.5" x2="57.5" y2="50.5" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        <line
