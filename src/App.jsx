@@ -732,8 +732,8 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
 
   const greeting = isEs ? `Hola${customerName ? " " + customerName : ""},` : `Hi${customerName ? " " + customerName : ""},`;
   const intro = isEs
-    ? `Aquí está el resumen de su cotización${address ? " para " + address : ""}:`
-    : `Here's a summary of your quote${address ? " for " + address : ""}:`;
+    ? `Aquí está el resumen completo de su cotización${address ? " para " + address : ""}:`
+    : `Here's the complete summary of your quote${address ? " for " + address : ""}:`;
   const guaranteeText = isEs
     ? "Este precio está garantizado por 45 días — sin sorpresas, sin presión."
     : "This price is guaranteed for 45 days — no surprises, no pressure.";
@@ -741,13 +741,60 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
   const depositLabel = isEs ? "Depósito del 50% al programar" : "50% deposit at scheduling";
   const ctaText = isEs ? "Continuar Mi Estimado" : "Continue My Estimate";
   const footerTagline = isEs ? "Siempre Conectados. Siempre Cómodos." : "Always Connected. Always Comfortable.";
+  const specsHeading = isEs ? "Especificaciones del Sistema" : "System Specifications";
+  const includesHeading = isEs ? "La Instalación Incluye" : "Installation Includes";
+  const partsWarrantyText = isEs ? "Garantía de Partes Limitada de 10 Años" : "10-Year Limited Parts Warranty";
+  const partsWarrantyNote = isEs ? "Requerido por la Ley de Florida" : "Required by Florida Law";
 
-  const specRows = eq ? `
-    <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">${isEs ? "Marca" : "Brand"}</td><td style="padding:6px 0; text-align:right; font-weight:700; color:${navy}; font-size:13px;">${eq.outdoor_brand || ""} ${eq.outdoor_series || ""}</td></tr>
-    <tr><td style="padding:6px 0; color:#64748b; font-size:13px; border-top:1px solid #e2e8f0;">${isEs ? "Tamaño" : "Size"}</td><td style="padding:6px 0; text-align:right; font-weight:700; color:${navy}; font-size:13px; border-top:1px solid #e2e8f0;">${eq.size_tons || ""} ${isEs ? "Toneladas" : "Tons"}</td></tr>
-    <tr><td style="padding:6px 0; color:#64748b; font-size:13px; border-top:1px solid #e2e8f0;">SEER2</td><td style="padding:6px 0; text-align:right; font-weight:700; color:${navy}; font-size:13px; border-top:1px solid #e2e8f0;">${eq.seer2 || ""}</td></tr>
-    ${eq.quality_pledge ? `<tr><td colspan="2" style="padding:10px 0 0; border-top:1px solid #e2e8f0;"><span style="background:#fef9c3; color:#92400e; border-radius:6px; padding:3px 10px; font-size:11px; font-weight:700;">${eq.quality_pledge_years === 999 ? "Lifetime" : eq.quality_pledge_years + "-" + (isEs ? "Año" : "Year")} Quality Pledge</span></td></tr>` : ""}
+  const installItems = isEs
+    ? ["Sistema Mostrado", "Plataforma de Concreto", "Líneas de Refrigerante de Cobre Nuevas", "Clips de Huracán", "Interruptor Flotante", "Luz UV", "Bastidor de Filtro 2\"", "Mano de Obra", "Permisos", "Retiro del Sistema Antiguo"]
+    : ["Displayed System", "Concrete Pad", "New Copper Refrigerant Lines", "Hurricane Clips to Secure Unit", "Float Switch to Prevent Drain Backups", "UV Light", "2\" Filter Rack", "Labor", "Permits", "Old System Haul-Away"];
+
+  // Build full spec rows matching every field shown on the Review Your System Details screen
+  const specRows = eq ? [
+    [isEs ? "Marca y Serie" : "Brand & Series", `${eq.outdoor_brand || ""} ${eq.outdoor_series || ""}`.trim()],
+    eq.ahri_ref ? [isEs ? "Referencia AHRI" : "AHRI Reference", eq.ahri_ref] : null,
+    eq.outdoor_model ? [isEs ? "Unidad Exterior" : "Outdoor Unit", eq.outdoor_model] : null,
+    eq.indoor_model ? [isEs ? "Unidad Interior" : "Indoor Unit", eq.indoor_model] : null,
+    eq.furnace_model ? [isEs ? "Horno" : "Furnace", eq.furnace_model] : null,
+    [isEs ? "Tamaño del Sistema" : "System Size", `${eq.size_tons || ""} ${isEs ? "Toneladas" : "Tons"}`],
+    ["SEER2", eq.seer2 || ""],
+    eq.cooling_capacity ? [isEs ? "Capacidad de Enfriamiento" : "Cooling Capacity", `${eq.cooling_capacity.toLocaleString()} BTU/h`] : null,
+    eq.labor_warranty ? [isEs ? "Garantía de Mano de Obra" : "Labor Warranty", eq.labor_warranty] : null,
+  ].filter(Boolean) : [];
+
+  const specRowsHtml = specRows.map(([label, val], i) => `
+    <tr><td style="padding:7px 0; color:#64748b; font-size:13px; ${i > 0 ? "border-top:1px solid #e2e8f0;" : ""}">${label}</td><td style="padding:7px 0; text-align:right; font-weight:700; color:${navy}; font-size:13px; ${i > 0 ? "border-top:1px solid #e2e8f0;" : ""}">${val}</td></tr>
+  `).join("");
+
+  // Badges row (Energy Star + Quality Pledge)
+  const badgesHtml = eq ? `
+    <div style="margin: 12px 0;">
+      ${eq.energy_star ? `<span style="display:inline-block; background:#dcfce7; color:#16a34a; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; margin-right:6px; margin-bottom:6px;">${isEs ? "Certificado ENERGY STAR®" : "ENERGY STAR® Certified"}</span>` : ""}
+      ${eq.quality_pledge ? `<span style="display:inline-block; background:#fef9c3; color:#92400e; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; margin-bottom:6px;">${eq.quality_pledge_years === 999 ? (isEs ? "Garantía de Por Vida" : "Lifetime") : eq.quality_pledge_years + "-" + (isEs ? "Año" : "Year")} Quality Pledge</span>` : ""}
+    </div>
   ` : "";
+
+  // Full Quality Pledge explanation block, matching Screen 15 exactly
+  const qualityPledgeBlock = (eq && eq.quality_pledge) ? `
+    <table style="width:100%; background:#fefce8; border:1px solid #fde68a; border-radius:10px; margin-bottom: 16px;" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:12px 14px;">
+        <div style="font-weight:800; font-size:12px; color:#92400e; margin-bottom:5px;">
+          ${eq.quality_pledge_years === 999 ? (isEs ? "Garantía de Por Vida" : "Lifetime") : eq.quality_pledge_years + "-" + (isEs ? "Año" : "Year")} Quality Pledge — ${isEs ? "Emitida por" : "Issued by"} ${eq.quality_pledge_issuer || ""}
+        </div>
+        <div style="font-size:11px; color:#78350f; line-height:1.5;">
+          ${isEs
+            ? "Si el compresor falla dentro del período cubierto, usted elige: un compresor de reemplazo nuevo, o el reemplazo completo de la unidad exterior. Sin costo para usted. Aplica a defectos de fabricación. Excluye abuso, negligencia o desastre natural. Se pueden solicitar registros de mantenimiento."
+            : "If your compressor fails within the covered period, you choose: a brand new replacement compressor, or complete replacement of the entire outdoor unit. No cost to you. Applies to manufacturer defects. Excludes abuse, neglect, or natural disaster. Maintenance records may be requested."}
+        </div>
+      </td></tr>
+    </table>
+  ` : "";
+
+  // Installation includes list
+  const installItemsHtml = installItems.map(item => `
+    <tr><td style="padding:3px 0; font-size:12px; color:${navy}; font-weight:600;">✓ ${item}</td></tr>
+  `).join("");
 
   return `
   <div style="font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; background:#CAEEFB; padding: 24px 16px;">
@@ -772,21 +819,42 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
         <p style="color:#475569; font-size:14px; margin: 0 0 20px; line-height:1.5;">${intro}</p>
 
         <!-- Price card -->
-        <div style="background:#f0f9ff; border:2px solid ${accent}; border-radius:16px; padding:20px; text-align:center; margin-bottom: 18px;">
-          <div style="font-size: 32px; font-weight: 900; color:${navy}; line-height:1;">$${total.toLocaleString()}</div>
-          <div style="font-size: 13px; color:${accent}; font-weight:700; margin-top:4px;">${monthlyLabel} $${monthly}/mo</div>
-          ${deposit ? `<div style="font-size: 12px; color:#64748b; margin-top:8px;">${depositLabel}: $${deposit.toLocaleString()}</div>` : ""}
-        </div>
+        <table style="width:100%; background:#f0f9ff; border:2px solid ${accent}; border-radius:16px; margin-bottom: 18px;" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:20px; text-align:center;">
+            <div style="font-size: 32px; font-weight: 900; color:${navy}; line-height:1;">$${total.toLocaleString()}</div>
+            <div style="font-size: 13px; color:${accent}; font-weight:700; margin-top:4px;">${monthlyLabel} $${monthly}/mo</div>
+            ${deposit ? `<div style="font-size: 12px; color:#64748b; margin-top:8px;">${depositLabel}: $${deposit.toLocaleString()}</div>` : ""}
+          </td></tr>
+        </table>
 
         ${eq ? `
+        <div style="font-weight:900; font-size:14px; color:${navy}; margin-bottom: 8px;">${specsHeading}</div>
+        <table style="width:100%; border-collapse:collapse; margin-bottom: 12px;">
+          ${specRowsHtml}
+        </table>
+        ${badgesHtml}
+        ` : ""}
+
+        ${qualityPledgeBlock}
+
+        <!-- Parts warranty -->
+        <table style="width:100%; background:${navy}; border-radius:12px; margin-bottom: 16px;" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:12px 16px;">
+            <div style="color:#ffffff; font-weight:800; font-size:13px;">${partsWarrantyText}</div>
+            <div style="color:#cbd5e1; font-size:11px; margin-top:2px;">${partsWarrantyNote}</div>
+          </td></tr>
+        </table>
+
+        ${eq ? `
+        <div style="font-weight:900; font-size:14px; color:${navy}; margin-bottom: 8px;">${includesHeading}</div>
         <table style="width:100%; border-collapse:collapse; margin-bottom: 18px;">
-          ${specRows}
+          ${installItemsHtml}
         </table>
         ` : ""}
 
         <!-- Guarantee badge -->
-        <table style="width:100%; background:${navy}; border-radius:12px; margin-bottom: 22px;" cellpadding="0" cellspacing="0">
-          <tr><td style="padding:14px 16px; color:#ffffff; font-size:13px; font-weight:700; text-align:center;">${guaranteeText}</td></tr>
+        <table style="width:100%; background:#f0f9ff; border:1.5px solid ${accent}; border-radius:12px; margin-bottom: 22px;" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:12px 16px; color:${navy}; font-size:13px; font-weight:700; text-align:center;">${guaranteeText}</td></tr>
         </table>
 
         <!-- CTA -->
