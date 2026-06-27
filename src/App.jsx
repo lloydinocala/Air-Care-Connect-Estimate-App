@@ -872,6 +872,104 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
   `;
 }
 
+// ── BOOKING CONFIRMATION EMAIL TEMPLATE ───────────────────────────────────────
+function buildConfirmationEmailHtml({ lang, brandName, customerName, bookingRef, installDate, address, eq, total, paymentMethod, isFinancing }) {
+  const isEs = lang === "es";
+  const accent = "#00B0F0";
+  const navy = "#163E64";
+  const green = "#16a34a";
+
+  const greeting = isEs ? `Hola${customerName ? " " + customerName : ""},` : `Hi${customerName ? " " + customerName : ""},`;
+  const headline = isEs ? "¡Está Todo Listo!" : "You're All Set!";
+  const intro = isEs
+    ? "Su instalación está programada. Aquí está la confirmación de su reserva:"
+    : "Your installation is scheduled. Here's your booking confirmation:";
+  const bookingRefLabel = isEs ? "Referencia de Reserva" : "Booking Reference";
+  const installDateLabel = isEs ? "Fecha de Instalación" : "Installation Date";
+  const addressLabel = isEs ? "Dirección de Instalación" : "Installation Address";
+  const systemLabel = isEs ? "Sistema" : "System";
+  const totalLabel = isEs ? "Precio Total" : "Total Price";
+  const whatNextHeading = isEs ? "Qué Sigue" : "What Happens Next";
+
+  const formattedDate = installDate
+    ? new Date(installDate).toLocaleDateString(isEs ? "es-ES" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+    : "";
+
+  const nextSteps = isFinancing
+    ? (isEs
+        ? [
+            "Complete su solicitud de financiamiento si aún no lo ha hecho",
+            "Nuestro equipo le llamará dentro de 1 día hábil para confirmar los detalles",
+            "Nuestros técnicos llegarán en su fecha programada, listos para instalar",
+          ]
+        : [
+            "Complete your financing application if you haven't already",
+            "Our team will call you within 1 business day to confirm details",
+            "Our technicians will arrive on your scheduled date, ready to install",
+          ])
+    : (isEs
+        ? [
+            "Recibirá un recibo de pago por separado de Stripe",
+            "Nuestro equipo le llamará dentro de 1 día hábil para confirmar los detalles",
+            "Nuestros técnicos llegarán en su fecha programada, listos para instalar",
+          ]
+        : [
+            "You'll receive a separate payment receipt from Stripe",
+            "Our team will call you within 1 business day to confirm details",
+            "Our technicians will arrive on your scheduled date, ready to install",
+          ]);
+
+  const nextStepsHtml = nextSteps.map((step, i) => `
+    <tr><td style="padding:5px 0; font-size:13px; color:${navy}; font-weight:600; vertical-align:top;">
+      <span style="color:${accent}; font-weight:900;">${i + 1}.</span> ${step}
+    </td></tr>
+  `).join("");
+
+  const footerTagline = isEs ? "Siempre Conectados. Siempre Cómodos." : "Always Connected. Always Comfortable.";
+
+  return `
+  <div style="font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; background:#CAEEFB; padding: 24px 16px;">
+    <div style="background:#ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, ${accent}, ${navy}); padding: 28px 24px; text-align: center;">
+        <div style="width:64px; height:64px; border-radius:50%; background:${green}; display:inline-block; line-height:64px; font-size:32px; color:#ffffff; font-weight:900; margin-bottom:10px;">&#10003;</div>
+        <div style="color: #ffffff; font-weight: 900; font-size: 22px;">${headline}</div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 28px 26px;">
+        <p style="color:${navy}; font-size:15px; font-weight:700; margin: 0 0 6px;">${greeting}</p>
+        <p style="color:#475569; font-size:14px; margin: 0 0 20px; line-height:1.5;">${intro}</p>
+
+        <table style="width:100%; background:#f0f9ff; border:2px solid ${accent}; border-radius:16px; margin-bottom: 18px;" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:18px;">
+            <table style="width:100%;">
+              <tr><td style="padding:5px 0; color:#64748b; font-size:12px;">${bookingRefLabel}</td><td style="padding:5px 0; text-align:right; font-weight:800; color:${navy}; font-size:13px;">${bookingRef}</td></tr>
+              <tr><td style="padding:5px 0; color:#64748b; font-size:12px; border-top:1px solid #bae6fd;">${installDateLabel}</td><td style="padding:5px 0; text-align:right; font-weight:800; color:${navy}; font-size:13px; border-top:1px solid #bae6fd;">${formattedDate}</td></tr>
+              ${address ? `<tr><td style="padding:5px 0; color:#64748b; font-size:12px; border-top:1px solid #bae6fd;">${addressLabel}</td><td style="padding:5px 0; text-align:right; font-weight:700; color:${navy}; font-size:12px; border-top:1px solid #bae6fd;">${address}</td></tr>` : ""}
+              ${eq ? `<tr><td style="padding:5px 0; color:#64748b; font-size:12px; border-top:1px solid #bae6fd;">${systemLabel}</td><td style="padding:5px 0; text-align:right; font-weight:700; color:${navy}; font-size:12px; border-top:1px solid #bae6fd;">${eq.outdoor_brand || ""} ${eq.outdoor_series || ""}</td></tr>` : ""}
+              ${total ? `<tr><td style="padding:5px 0; color:#64748b; font-size:12px; border-top:1px solid #bae6fd;">${totalLabel}</td><td style="padding:5px 0; text-align:right; font-weight:900; color:${navy}; font-size:15px; border-top:1px solid #bae6fd;">$${total.toLocaleString()}</td></tr>` : ""}
+            </table>
+          </td></tr>
+        </table>
+
+        <div style="font-weight:900; font-size:14px; color:${navy}; margin-bottom: 10px;">${whatNextHeading}</div>
+        <table style="width:100%; border-collapse:collapse; margin-bottom: 8px;">
+          ${nextStepsHtml}
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div style="background:#f8fafc; padding: 18px 26px; text-align:center; border-top:1px solid #e2e8f0;">
+        <p style="color:#94a3b8; font-size:11px; margin:0; font-weight:600;">${brandName} - ${footerTagline}</p>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+// IMPORTANT: buildCustomerContext function signature below - do not delete this line when editing nearby functions
 function buildCustomerContext(ctx) {
   if (!ctx) return "The customer has not started their estimate yet — they're on the landing page.";
 
@@ -3187,7 +3285,37 @@ export default function App() {
       });
       const data = await r.json();
       const created = Array.isArray(data) ? data[0] : data;
-      setBookingRef(created?.booking_reference || `ACB-${new Date().getFullYear()}-PENDING`);
+      const finalBookingRef = created?.booking_reference || `ACB-${new Date().getFullYear()}-PENDING`;
+      setBookingRef(finalBookingRef);
+
+      // Send real confirmation email + SMS now that the booking is confirmed
+      const confirmHtml = buildConfirmationEmailHtml({
+        lang, brandName: brand.name, customerName: customerInfo?.name,
+        bookingRef: finalBookingRef, installDate, address: property?.address,
+        eq: selectedEq, total, paymentMethod: paymentInfoArg?.method, isFinancing,
+      });
+
+      if (customerInfo?.email) {
+        fetch("/api/send-email", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: customerInfo.email,
+            subject: lang === "es" ? `Confirmación de Reserva - ${finalBookingRef}` : `Booking Confirmed - ${finalBookingRef}`,
+            htmlContent: confirmHtml,
+          }),
+        }).catch(e => console.error("Confirmation email error:", e));
+      }
+
+      if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
+        const formattedDate = installDate ? new Date(installDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+        const smsBody = lang === "es"
+          ? `${brand.name}: Reserva confirmada! Ref: ${finalBookingRef}. Instalacion: ${formattedDate}. Le llamaremos pronto para confirmar detalles.`
+          : `${brand.name}: Booking confirmed! Ref: ${finalBookingRef}. Install date: ${formattedDate}. We'll call soon to confirm details.`;
+        fetch("/api/send-sms", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: customerInfo.phone, message: smsBody }),
+        }).catch(e => console.error("Confirmation SMS error:", e));
+      }
     } catch(e) {
       console.error("Booking creation error:", e);
       setBookingRef(`ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`);
@@ -3493,5 +3621,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
