@@ -1979,8 +1979,7 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG,
 }
 
 // ── SCREEN 14: EQUIPMENT RESULTS ──────────────────────────────────────────────
-function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave }) {
-  const [equipment, setEquipment] = useState([]);
+function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onCompareTiers, lang }) {
   const [recommended, setRecommended] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savedIds, setSavedIds] = useState([]);
@@ -1994,26 +1993,31 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
     const load = async () => {
       setLoading(true);
       setSizeNote(null);
-      let recResults = [], allResults = [];
+      let recResults = [];
       let anyAdjusted = false, finalTons = tons;
 
       for (const st of systemTypes) {
-        const rec = await QuoteEngine.fetchEquipment(st, tons, brandFamily, true, homeType);
-        recResults = [...recResults, ...(selectedBrand !== "recommended" ? rec.filter(e => e.outdoor_brand === selectedBrand) : rec)];
-
-        // Use size-fallback for the general equipment list
-        const fallback = await QuoteEngine.fetchEquipmentWithSizeFallback(st, tons, brandFamily, homeType, selectedBrand);
-        allResults = [...allResults, ...fallback.equipment];
-        if (fallback.sizeAdjusted) { anyAdjusted = true; finalTons = fallback.actualTons; }
+        // Step up in size automatically if no recommendation exists at the exact requested tonnage
+        const ladder = QuoteEngine.TONNAGE_LADDER.filter(sz => sz >= tons);
+        for (const trySize of ladder) {
+          let rec = await QuoteEngine.fetchEquipment(st, trySize, brandFamily, true, homeType);
+          if (selectedBrand !== "recommended") {
+            rec = rec.filter(e => e.outdoor_brand === selectedBrand);
+          }
+          if (rec.length > 0) {
+            recResults = [...recResults, ...rec];
+            if (trySize !== tons) { anyAdjusted = true; finalTons = trySize; }
+            break; // found a size with recommendations for this system type, stop climbing
+          }
+        }
       }
 
-      if (anyAdjusted && allResults.length > 0) {
+      if (anyAdjusted) {
         setSizeNote(finalTons);
       }
 
       recResults.sort((a, b) => a.seer2 - b.seer2);
       setRecommended(recResults.slice(0, 2));
-      setEquipment(allResults.filter(e => !recResults.slice(0,2).find(r => r.id === e.id)));
       setLoading(false);
     };
     load();
@@ -2057,7 +2061,7 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
       )}
 
       <div style={{ padding: "8px 20px 0" }}>
-        {/* Recommended systems */}
+        {/* Recommended systems — exactly 2, our actual curated picks */}
         {recommended.length > 0 && (
           <div>
             {recommended.map((eq, i) => (
@@ -2072,33 +2076,14 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
           </div>
         )}
 
-        {/* Other available systems for this brand (always show if any exist, even with no recommendation) */}
-        {equipment.length > 0 && (
-          <div>
-            {recommended.length === 0 && (
-              <div style={{ fontSize: 12, fontWeight: 800, color: C.navy, marginBottom: 10, opacity: 0.7 }}>
-                AVAILABLE {selectedBrand !== "recommended" ? selectedBrand.toUpperCase() : ""} SYSTEMS
-              </div>
-            )}
-            {equipment.map(eq => (
-              <EquipmentCard key={eq.id} eq={eq} adders={adderTotal} t={t}
-                recommended={false}
-                saved={savedIds.includes(eq.id)}
-                onSave={toggleSave}
-                onSelect={onSelect}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Truly nothing found for this brand at this size — honest message + real navigation */}
-        {recommended.length === 0 && equipment.length === 0 && (
+        {/* Nothing recommended for this brand at any available size */}
+        {recommended.length === 0 && (
           <div style={{ textAlign: "center", padding: 32 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
             <p style={{ color: C.navy, fontWeight: 700, marginBottom: 4 }}>
               {selectedBrand !== "recommended"
-                ? `${selectedBrand} doesn't have a system available for your home's size right now.`
-                : "No systems found for this combination."}
+                ? `${selectedBrand} doesn't have a recommended system available for your home's size right now.`
+                : "No recommendations found for this combination."}
             </p>
             <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>
               Try a different brand, or ask your Comfort Guide for help finding the right fit.
@@ -2107,14 +2092,15 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
           </div>
         )}
 
-        {/* See More Options - only show when there's actually something else to see */}
-        {(recommended.length > 0 || equipment.length > 0) && (
-          <div style={{ textAlign: "center", marginTop: 16, marginBottom: 8 }}>
-            <WhiteBtn onClick={onBack} style={{ maxWidth: 280, margin: "0 auto" }}>
-              {t.seeMore} →
-            </WhiteBtn>
-          </div>
-        )}
+        {/* Compare other brand families / price tiers */}
+        <div style={{ textAlign: "center", marginTop: 16, marginBottom: 8, display: "flex", flexDirection: "column", gap: 10 }}>
+          <WhiteBtn onClick={onBack} style={{ maxWidth: 280, margin: "0 auto" }}>
+            {lang === "es" ? "Elegir Otra Marca" : "Choose a Different Brand"} →
+          </WhiteBtn>
+          <WhiteBtn onClick={onCompareTiers} style={{ maxWidth: 280, margin: "0 auto" }}>
+            {lang === "es" ? "Comparar Otras Categorías de Precio" : "Compare Other Price Tiers"} →
+          </WhiteBtn>
+        </div>
       </div>
     </Shell>
   );
@@ -3109,9 +3095,10 @@ export default function App() {
         onSelect={b => { setSelectedBrand(b); go("s14"); }}
         onBack={() => go("s12")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
-      {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote}
+      {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote} lang={lang}
         brandFamily={brandFamily} selectedBrand={selectedBrand}
         onSelect={eq => { setSelectedEq(eq); go("s15"); }}
+        onCompareTiers={() => go("s12")}
         onBack={() => go("s13")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote} lang={lang}
