@@ -1456,10 +1456,12 @@ const fetchPropertyData = async (address, lat, lng, apiKey) => {
 };
 
 // ── SCREEN 3: CONFIRM HOME ────────────────────────────────────────────────────
-function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG, onSave }) {
+function S3_ConfirmHome({ brand, t, lang, property, onConfirm, onEdit, onBack, onCG, onSave }) {
   const [propData, setPropData] = useState(property);
   const [loadingProp, setLoadingProp] = useState(true);
   const [streetViewError, setStreetViewError] = useState(false);
+  const [editingSqft, setEditingSqft] = useState(false);
+  const [sqftInput, setSqftInput] = useState("");
 
   // Street View state
   const [svUrl, setSvUrl] = useState(null);
@@ -1601,16 +1603,49 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG, o
         <div style={{ background: C.navy, padding: "10px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
             {[
-              { v: propData.beds, l: t.beds },
-              { v: propData.baths, l: t.baths },
-              { v: propData.sqft?.toLocaleString(), l: t.sqft },
-            ].map(({ v, l }) => (
-              <div key={l} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 20, fontWeight: 900, color: C.white }}>{v || "—"}</div>
+              { v: propData.beds, l: t.beds, editable: false },
+              { v: propData.baths, l: t.baths, editable: false },
+              { v: propData.sqft?.toLocaleString(), l: t.sqft, editable: true },
+            ].map(({ v, l, editable }) => (
+              <div key={l}
+                onClick={editable ? () => { setSqftInput(String(propData.sqft || "")); setEditingSqft(true); } : undefined}
+                style={{ textAlign: "center", cursor: editable ? "pointer" : "default", position: "relative" }}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: C.white }}>
+                  {v || "—"}{editable && <span style={{ fontSize: 11, marginLeft: 3 }}>✏️</span>}
+                </div>
                 <div style={{ fontSize: 11, color: C.gray, fontWeight: 700 }}>{l}</div>
               </div>
             ))}
           </div>
+
+          {editingSqft && (
+            <div style={{ background: "rgba(255,255,255,0.97)", borderRadius: 12, padding: "12px", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.navy, marginBottom: 6, textAlign: "center" }}>
+                {lang === "es" ? "Corregir Pies Cuadrados" : "Correct Square Footage"}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={sqftInput}
+                  onChange={e => setSqftInput(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  autoFocus
+                  style={{ flex: 1, border: `2px solid ${C.blue}`, borderRadius: 8, padding: "8px 10px", fontSize: 14, outline: "none", fontFamily: FONT, color: C.navy, fontWeight: 700, boxSizing: "border-box" }}
+                />
+                <button onClick={() => {
+                  const n = parseInt(sqftInput, 10);
+                  if (n && n > 100 && n < 20000) {
+                    setPropData(p => ({ ...p, sqft: n }));
+                  }
+                  setEditingSqft(false);
+                }} style={{ background: C.blue, color: C.white, border: "none", borderRadius: 8, padding: "0 14px", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT }}>
+                  {lang === "es" ? "OK" : "OK"}
+                </button>
+                <button onClick={() => setEditingSqft(false)} style={{ background: "none", border: `2px solid ${C.gray}`, color: "#64748b", borderRadius: 8, padding: "0 12px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: FONT }}>
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
             <span style={{ background: C.blue, color: C.white, borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
               {propData.type}
@@ -1645,13 +1680,15 @@ function S3_ConfirmHome({ brand, t, property, onConfirm, onEdit, onBack, onCG, o
       {/* Note about property details */}
       <div style={{ margin: "10px 20px 0", background: "#f0f9ff", borderRadius: 12, padding: "10px 14px", border: `1px solid ${C.blue}` }}>
         <p style={{ margin: 0, fontSize: 12, color: C.navy, fontWeight: 600, textAlign: "center", lineHeight: 1.5 }}>
-          💡 Home details are pulled from public property records. If anything looks incorrect, tap <strong>"Edit Home Details"</strong> to make corrections before we calculate your estimate.
+          💡 {lang === "es"
+            ? "Toque el ícono ✏️ junto a los pies cuadrados para corregirlo, o use el botón abajo si la dirección es incorrecta."
+            : "Tap the ✏️ icon next to square footage to correct it, or use the button below if the address itself is wrong."}
         </p>
       </div>
 
       <div style={{ padding: "14px 20px 0", display: "flex", gap: 12 }}>
         <BlueBtn onClick={() => onConfirm(propData)} style={{ flex: 1 }}>{t.confirmBtn}</BlueBtn>
-        <WhiteBtn onClick={onEdit} style={{ flex: 1 }}>{t.editBtn}</WhiteBtn>
+        <WhiteBtn onClick={onEdit} style={{ flex: 1 }}>{lang === "es" ? "Dirección Incorrecta" : "Wrong Address"}</WhiteBtn>
       </div>
       <div style={{ padding: "10px 20px 0" }}>
         <TrustRow items={[t.noApptShort, t.noCallShort]} />
@@ -3110,7 +3147,7 @@ export default function App() {
         onFound={p => { setProperty(p); go("s3"); }}
         onBack={() => go("s1")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
-      {screen === "s3" && <S3_ConfirmHome brand={brand} t={t} property={property}
+      {screen === "s3" && <S3_ConfirmHome brand={brand} t={t} lang={lang} property={property}
         onConfirm={(verified) => {
           if (verified) {
             setProperty(verified);
