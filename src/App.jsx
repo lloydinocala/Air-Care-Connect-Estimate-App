@@ -421,6 +421,52 @@ const QuoteEngine = {
     return brands;
   },
 
+  // All standard tonnage sizes in order, for stepping up when exact size unavailable
+  TONNAGE_LADDER: [1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
+
+  // All brand families in price order, for stepping between tiers
+  BRAND_FAMILY_ORDER: ["Budget-Friendly", "Commonly Purchased", "Trending in 2026", "Premium Products"],
+
+  // Find the best available system for a brand, stepping UP in size if exact tonnage is unavailable.
+  // Never steps down — undersizing an AC system is never acceptable.
+  // Returns { equipment: [...], actualTons, sizeAdjusted: bool }
+  fetchEquipmentWithSizeFallback: async (systemType, requestedTons, brandFamily, homeType, selectedBrand) => {
+    const ladder = QuoteEngine.TONNAGE_LADDER.filter(t => t >= requestedTons);
+    for (const tons of ladder) {
+      let results = await QuoteEngine.fetchEquipment(systemType, tons, brandFamily, false, homeType);
+      if (selectedBrand && selectedBrand !== "recommended") {
+        results = results.filter(e => e.outdoor_brand === selectedBrand);
+      }
+      if (results.length > 0) {
+        return { equipment: results, actualTons: tons, sizeAdjusted: tons !== requestedTons };
+      }
+    }
+    return { equipment: [], actualTons: requestedTons, sizeAdjusted: false };
+  },
+
+  // Find which brand family actually carries a given brand, searching both directions
+  // from the customer's originally chosen tier. Returns null if brand isn't found anywhere.
+  findBrandFamilyForBrand: async (systemType, tons, homeType, targetBrand, startingFamily) => {
+    const order = QuoteEngine.BRAND_FAMILY_ORDER;
+    const startIdx = order.indexOf(startingFamily);
+    if (startIdx === -1) return null;
+
+    // Search outward from the starting tier: same tier first, then alternating up/down
+    const searchOrder = [startIdx];
+    for (let dist = 1; dist < order.length; dist++) {
+      if (startIdx + dist < order.length) searchOrder.push(startIdx + dist);
+      if (startIdx - dist >= 0) searchOrder.push(startIdx - dist);
+    }
+
+    for (const idx of searchOrder) {
+      const family = order[idx];
+      const results = await QuoteEngine.fetchEquipment(systemType, tons, family, false, homeType);
+      const hasBrand = results.some(e => e.outdoor_brand === targetBrand);
+      if (hasBrand) return family;
+    }
+    return null;
+  },
+
   // Get price range for a system type + tonnage
   getPriceRange: (equipment, adderTotal) => {
     if (!equipment.length) return { min: 0, max: 0 };
@@ -1950,11 +1996,13 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG,
 }
 
 // ── SCREEN 14: EQUIPMENT RESULTS ──────────────────────────────────────────────
-function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave }) {
+function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onSwitchFamily }) {
   const [equipment, setEquipment] = useState([]);
   const [recommended, setRecommended] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savedIds, setSavedIds] = useState([]);
+  const [sizeNote, setSizeNote] = useState(null);
+  const [tierSuggestion, setTierSuggestion] = useState(null);
   const { property, answers, adderTotal } = quote;
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
   const homeType = answers.detectedHomeType || property.type || "site-built";
@@ -1963,19 +2011,37 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setSizeNote(null);
+      setTierSuggestion(null);
       let recResults = [], allResults = [];
+      let anyAdjusted = false, finalTons = tons;
+
       for (const st of systemTypes) {
-        const rec = await QuoteEngine.fetchEquipment(st, tons, brandFamily, true);
-        const all = await QuoteEngine.fetchEquipment(st, tons, brandFamily, false);
-        recResults = [...recResults, ...rec];
-        allResults = [...allResults, ...all];
+        const rec = await QuoteEngine.fetchEquipment(st, tons, brandFamily, true, homeType);
+        recResults = [...recResults, ...(selectedBrand !== "recommended" ? rec.filter(e => e.outdoor_brand === selectedBrand) : rec)];
+
+        // Use size-fallback for the general equipment list
+        const fallback = await QuoteEngine.fetchEquipmentWithSizeFallback(st, tons, brandFamily, homeType, selectedBrand);
+        allResults = [...allResults, ...fallback.equipment];
+        if (fallback.sizeAdjusted) { anyAdjusted = true; finalTons = fallback.actualTons; }
       }
-      // Filter by brand if specific brand selected
-      if (selectedBrand !== "recommended") {
-        allResults = allResults.filter(e => e.outdoor_brand === selectedBrand);
-        recResults = recResults.filter(e => e.outdoor_brand === selectedBrand);
+
+      // If a specific brand was requested and STILL nothing found at any size in this tier,
+      // check if that brand exists in a different price tier
+      if (selectedBrand !== "recommended" && allResults.length === 0 && recResults.length === 0) {
+        for (const st of systemTypes) {
+          const otherFamily = await QuoteEngine.findBrandFamilyForBrand(st, tons, homeType, selectedBrand, brandFamily);
+          if (otherFamily && otherFamily !== brandFamily) {
+            setTierSuggestion(otherFamily);
+            break;
+          }
+        }
       }
-      // Sort recommended: lowest SEER first, highest SEER last
+
+      if (anyAdjusted && allResults.length > 0) {
+        setSizeNote(finalTons);
+      }
+
       recResults.sort((a, b) => a.seer2 - b.seer2);
       setRecommended(recResults.slice(0, 2));
       setEquipment(allResults.filter(e => !recResults.slice(0,2).find(r => r.id === e.id)));
@@ -2011,23 +2077,26 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
         <GuaranteeBadge t={t} />
       </div>
 
-      {savedSystems.length > 0 && (
-        <div style={{ padding: "8px 20px 0" }}>
-          <div style={{ background: "#f0f9ff", border: `2px solid ${C.blue}`, borderRadius: 14, padding: "12px 14px" }}>
-            <div style={{ fontWeight: 900, fontSize: 13, color: C.navy, marginBottom: 8 }}>
-              💾 {t.savedOptions} ({savedSystems.length})
+      {sizeNote && (
+        <div style={{ padding: "0 20px" }}>
+          <div style={{ background: "#fefce8", border: `1.5px solid ${C.amber}`, borderRadius: 12, padding: "10px 14px", marginBottom: 4 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#854d0e", fontWeight: 600, lineHeight: 1.4 }}>
+              ℹ️ The exact size wasn't available in this lineup, so we've shown the next size up ({sizeNote} tons) to make sure your home is properly cooled.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {tierSuggestion && (
+        <div style={{ padding: "0 20px" }}>
+          <div style={{ background: "#f0f9ff", border: `2px solid ${C.blue}`, borderRadius: 12, padding: "14px", marginBottom: 4 }}>
+            <p style={{ margin: "0 0 10px", fontSize: 13, color: C.navy, fontWeight: 700, lineHeight: 1.5 }}>
+              {selectedBrand} isn't available in {brandFamily}, but it IS available in our {tierSuggestion} lineup — pricing may differ slightly. Would you like to see those options?
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <BlueBtn onClick={() => onSwitchFamily(tierSuggestion)} style={{ flex: 1, padding: "10px", fontSize: 13 }}>Yes, Show Me</BlueBtn>
+              <WhiteBtn onClick={onBack} style={{ flex: 1, padding: "10px", fontSize: 13 }}>Choose Different Brand</WhiteBtn>
             </div>
-            {savedSystems.map(eq => (
-              <div key={eq.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: `1px solid ${C.gray}` }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{eq.outdoor_brand} {eq.outdoor_series}</div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>${((eq.installation_price || 0) + adderTotal).toLocaleString()}</div>
-                </div>
-                <button onClick={() => onSelect(eq)} style={{ background: C.blue, color: C.white, border: "none", borderRadius: 20, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: FONT }}>
-                  View →
-                </button>
-              </div>
-            ))}
           </div>
         </div>
       )}
@@ -2047,19 +2116,48 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
             ))}
           </div>
         )}
-        {/* See More Options button - leads back to brand selection */}
+
+        {/* Other available systems for this brand (always show if any exist, even with no recommendation) */}
         {equipment.length > 0 && (
-          <div style={{ textAlign: "center", marginTop: 8, marginBottom: 8 }}>
+          <div>
+            {recommended.length === 0 && (
+              <div style={{ fontSize: 12, fontWeight: 800, color: C.navy, marginBottom: 10, opacity: 0.7 }}>
+                AVAILABLE {selectedBrand !== "recommended" ? selectedBrand.toUpperCase() : ""} SYSTEMS
+              </div>
+            )}
+            {equipment.map(eq => (
+              <EquipmentCard key={eq.id} eq={eq} adders={adderTotal} t={t}
+                recommended={false}
+                saved={savedIds.includes(eq.id)}
+                onSave={toggleSave}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Truly nothing found anywhere — honest message + real navigation */}
+        {recommended.length === 0 && equipment.length === 0 && !tierSuggestion && (
+          <div style={{ textAlign: "center", padding: 32 }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
+            <p style={{ color: C.navy, fontWeight: 700, marginBottom: 4 }}>
+              {selectedBrand !== "recommended"
+                ? `${selectedBrand} doesn't have a system available for your home's size in any price tier right now.`
+                : "No systems found for this combination."}
+            </p>
+            <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>
+              Try a different brand, or ask your Comfort Guide for help finding the right fit.
+            </p>
+            <BlueBtn onClick={onBack} style={{ marginTop: 8 }}>← Choose a Different Brand</BlueBtn>
+          </div>
+        )}
+
+        {/* See More Options - only show when there's actually something else to see */}
+        {(recommended.length > 0 || equipment.length > 0) && (
+          <div style={{ textAlign: "center", marginTop: 16, marginBottom: 8 }}>
             <WhiteBtn onClick={onBack} style={{ maxWidth: 280, margin: "0 auto" }}>
               {t.seeMore} →
             </WhiteBtn>
-          </div>
-        )}
-        {recommended.length === 0 && equipment.length === 0 && (
-          <div style={{ textAlign: "center", padding: 32 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
-            <p style={{ color: C.navy, fontWeight: 700 }}>No systems found for this combination. Try a different brand family.</p>
-            <BlueBtn onClick={onBack} style={{ marginTop: 16 }}>← Choose Different Family</BlueBtn>
           </div>
         )}
       </div>
@@ -3059,6 +3157,7 @@ export default function App() {
       {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote}
         brandFamily={brandFamily} selectedBrand={selectedBrand}
         onSelect={eq => { setSelectedEq(eq); go("s15"); }}
+        onSwitchFamily={newFamily => setBrandFamily(newFamily)}
         onBack={() => go("s13")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote} lang={lang}
@@ -3174,3 +3273,4 @@ export default function App() {
     </div>
   );
 }
+
