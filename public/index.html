@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#00B0F0" />
     <meta name="description" content="Air-Care Connect — Instant AC Replacement Estimates" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <title>Air-Care Connect — Get Your Instant Estimate</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -57,7 +62,6 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
 
-    <!-- Static splash shown instantly, before React/JS bundle loads -->
     <div id="splash">
       <svg viewBox="0 0 100 100" width="84" height="84">
         <defs>
@@ -80,7 +84,6 @@
     <div id="root"></div>
 
     <script>
-      // Once React has mounted real content into #root, fade out and remove the splash
       (function() {
         var attempts = 0;
         var check = setInterval(function() {
@@ -94,7 +97,6 @@
               setTimeout(function() { splash.remove(); }, 450);
             }
           } else if (attempts > 100) {
-            // Safety net: don't hide forever if something goes wrong (10s max)
             clearInterval(check);
           }
         }, 50);
