@@ -2043,12 +2043,57 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
 }
 
 // ── SCREEN 15: SYSTEM DETAIL / REVIEW ─────────────────────────────────────────
-function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG, onSave }) {
+function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG, onSave, lang }) {
   const { adderTotal } = quote;
   const total = (selectedEq.installation_price || 0) + adderTotal;
   const deposit = total * 0.5;
   const monthly = Math.round(total / 60);
   const [emailSent, setEmailSent] = useState(false);
+  const [showEmailBox, setShowEmailBox] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailError, setEmailError] = useState("");
+
+  const handleEmailQuote = async () => {
+    if (!emailInput.trim()) return;
+    setSendingEmail(true);
+    setEmailError("");
+    try {
+      const priceLine = `$${total.toLocaleString()} installed`;
+      const sysLine = `${selectedEq.outdoor_brand} ${selectedEq.outdoor_series} (${selectedEq.size_tons} Ton, SEER2 ${selectedEq.seer2})`;
+      const r = await fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: emailInput.trim(),
+          subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
+          htmlContent: `
+            <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+              <h2 style="color: #163E64;">${lang === "es" ? "Su Cotización" : "Your Quote"}</h2>
+              <p>${lang === "es" ? "Aquí está el resumen de su cotización:" : "Here's a summary of your quote:"}</p>
+              <div style="background:#f0f9ff; border:2px solid #00B0F0; border-radius:12px; padding:16px; margin:16px 0;">
+                <strong>${sysLine}</strong><br/>
+                <span style="font-size:24px; font-weight:900; color:#163E64;">${priceLine}</span><br/>
+                <span style="font-size:13px; color:#64748b;">${lang === "es" ? "Desde" : "As low as"} $${monthly}/mo</span>
+              </div>
+              <p>${lang === "es" ? "Esta cotización está garantizada por 45 días." : "This quote is guaranteed for 45 days."}</p>
+              <p style="color:#64748b; font-size:13px;">${brand.name}</p>
+            </div>
+          `,
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setEmailError(data.error || "Could not send — please try again.");
+      } else {
+        setEmailSent(true);
+        setShowEmailBox(false);
+        setTimeout(() => setEmailSent(false), 4000);
+      }
+    } catch(e) {
+      setEmailError("Connection issue — please try again.");
+    }
+    setSendingEmail(false);
+  };
 
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
@@ -2129,9 +2174,39 @@ function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG
         {/* Action buttons */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
           <BlueBtn onClick={onApprove}>{t.approveQuote}</BlueBtn>
-          <WhiteBtn onClick={() => { setEmailSent(true); setTimeout(() => setEmailSent(false), 3000); }}>
-            {emailSent ? "✓ Quote Sent!" : t.emailQuote}
-          </WhiteBtn>
+
+          {!showEmailBox && !emailSent && (
+            <WhiteBtn onClick={() => setShowEmailBox(true)}>{t.emailQuote}</WhiteBtn>
+          )}
+
+          {showEmailBox && (
+            <div style={{ background: C.white, border: `2px solid ${C.blue}`, borderRadius: 14, padding: 14, boxShadow: SHADOW_SM }}>
+              <input
+                value={emailInput}
+                onChange={e => setEmailInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleEmailQuote()}
+                placeholder={lang === "es" ? "Su correo electrónico" : "Your email address"}
+                type="email"
+                style={{ width: "100%", border: `2px solid ${C.gray}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", fontFamily: FONT, marginBottom: 10, boxSizing: "border-box" }}
+              />
+              {emailError && <p style={{ color: "#dc2626", fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{emailError}</p>}
+              <div style={{ display: "flex", gap: 8 }}>
+                <BlueBtn onClick={handleEmailQuote} disabled={!emailInput.trim() || sendingEmail} style={{ flex: 1, padding: "10px", fontSize: 13 }}>
+                  {sendingEmail ? "..." : (lang === "es" ? "Enviar" : "Send")}
+                </BlueBtn>
+                <WhiteBtn onClick={() => setShowEmailBox(false)} style={{ flex: 1, padding: "10px", fontSize: 13 }}>
+                  {lang === "es" ? "Cancelar" : "Cancel"}
+                </WhiteBtn>
+              </div>
+            </div>
+          )}
+
+          {emailSent && (
+            <div style={{ background: "#dcfce7", border: `2px solid ${C.green}`, borderRadius: 14, padding: "12px", textAlign: "center", color: C.green, fontWeight: 800, fontSize: 14 }}>
+              ✓ {lang === "es" ? "¡Cotización Enviada!" : "Quote Sent!"}
+            </div>
+          )}
+
           <WhiteBtn onClick={onBack}>{t.reviewMore}</WhiteBtn>
         </div>
       </div>
@@ -2961,7 +3036,7 @@ export default function App() {
         onSelect={eq => { setSelectedEq(eq); go("s15"); }}
         onBack={() => go("s13")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
-      {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote}
+      {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote} lang={lang}
         selectedEq={selectedEq}
         onApprove={() => go("s16")}
         onBack={() => go("s14")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
