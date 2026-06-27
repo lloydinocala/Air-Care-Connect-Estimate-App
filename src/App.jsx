@@ -91,6 +91,7 @@ const T = {
     seer2Label: "SEER2", tonsLabel: "Tons", priceLabel: "Installed Price",
     saveOption: "Save This Option", saved: "Saved", savedOptions: "Review Saved Options",
     scheduleThis: "Schedule Installation of This System",
+    viewFullDetails: "See Full Details & What's Included",
     returnSaved: "Return to Saved Options",
     seeMore: "See More Options",
     guarantee45: "45-Day Price Guarantee",
@@ -233,6 +234,7 @@ const T = {
     seer2Label: "SEER2", tonsLabel: "Toneladas", priceLabel: "Precio Instalado",
     saveOption: "Guardar Esta Opción", saved: "Guardado", savedOptions: "Revisar Opciones Guardadas",
     scheduleThis: "Programar Instalación de Este Sistema",
+    viewFullDetails: "Ver Detalles Completos y Lo Que Incluye",
     returnSaved: "Volver a Opciones Guardadas",
     seeMore: "Ver Más Opciones",
     guarantee45: "Garantía de Precio 45 Días",
@@ -705,7 +707,7 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <BlueBtn onClick={() => onSelect(eq)} style={{ flex: 2, padding: "11px 16px", fontSize: 13 }}>
-          {t.scheduleThis}
+          {t.viewFullDetails}
         </BlueBtn>
         <WhiteBtn onClick={() => onSave(eq)} style={{ flex: 1, padding: "11px 12px", fontSize: 12, opacity: saved ? 0.5 : 1 }}>
           {saved ? `✓ ${t.saved}` : t.saveOption}
@@ -800,7 +802,7 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
   `;
 }
 
-
+function buildCustomerContext(ctx) {
   if (!ctx) return "The customer has not started their estimate yet — they're on the landing page.";
 
   const parts = [];
@@ -2289,7 +2291,7 @@ function ReviewSavedOptions({ brand, t, lang, quote, savedOptions, onToggleSaved
                 <div style={{ fontSize: 12, color: C.blue, fontWeight: 700, marginBottom: 12 }}>
                   {lang === "es" ? "Desde" : "As low as"} ${monthly}/mo
                 </div>
-                <BlueBtn onClick={() => onSelect(eq)}>{t.scheduleThis}</BlueBtn>
+                <BlueBtn onClick={() => onSelect(eq)}>{t.viewFullDetails}</BlueBtn>
               </div>
             );
           })
