@@ -1979,10 +1979,9 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG,
 }
 
 // ── SCREEN 14: EQUIPMENT RESULTS ──────────────────────────────────────────────
-function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onCompareTiers, lang }) {
+function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onCompareTiers, lang, savedOptions, onToggleSaved, onReviewSaved }) {
   const [recommended, setRecommended] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [savedIds, setSavedIds] = useState([]);
   const [sizeNote, setSizeNote] = useState(null);
   const { property, answers, adderTotal } = quote;
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
@@ -2023,10 +2022,6 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
     load();
   }, [brandFamily, selectedBrand]);
 
-  const toggleSave = (eq) => {
-    setSavedIds(p => p.includes(eq.id) ? p.filter(id => id !== eq.id) : [...p, eq.id]);
-  };
-
   if (loading) return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
@@ -2058,6 +2053,21 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
       )}
 
       <div style={{ padding: "8px 20px 0" }}>
+        {/* Saved options indicator — visible whenever the customer has saved anything */}
+        {savedOptions.length > 0 && (
+          <button onClick={onReviewSaved} style={{
+            width: "100%", background: C.navy, color: C.white, border: "none",
+            borderRadius: 14, padding: "12px 16px", marginBottom: 14, cursor: "pointer",
+            fontFamily: FONT, display: "flex", alignItems: "center", justifyContent: "space-between",
+            boxShadow: SHADOW,
+          }}>
+            <span style={{ fontWeight: 800, fontSize: 13 }}>
+              💾 {savedOptions.length} {lang === "es" ? "Opciones Guardadas" : "Saved Option" + (savedOptions.length > 1 ? "s" : "")}
+            </span>
+            <span style={{ fontWeight: 900, fontSize: 13 }}>{lang === "es" ? "Revisar" : "Review"} →</span>
+          </button>
+        )}
+
         {/* Recommended systems — exactly 2, our actual curated picks */}
         {recommended.length > 0 && (
           <div>
@@ -2065,8 +2075,8 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
               <EquipmentCard key={eq.id} eq={eq} adders={adderTotal} t={t}
                 recommended={true}
                 label={i === 0 ? `⭐ ${t.bestValue}` : `⚡ ${t.bestEfficiency}`}
-                saved={savedIds.includes(eq.id)}
-                onSave={toggleSave}
+                saved={!!savedOptions.find(s => s.id === eq.id)}
+                onSave={onToggleSaved}
                 onSelect={onSelect}
               />
             ))}
@@ -2098,6 +2108,74 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
             {lang === "es" ? "Comparar Otras Categorías de Precio" : "Compare Other Price Tiers"} →
           </WhiteBtn>
         </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ── SCREEN: REVIEW SAVED OPTIONS ──────────────────────────────────────────────
+function ReviewSavedOptions({ brand, t, lang, quote, savedOptions, onToggleSaved, onSelect, onBack, onCG }) {
+  const { adderTotal } = quote;
+
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>
+          {lang === "es" ? "Sus Opciones Guardadas" : "Your Saved Options"}
+        </h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "6px 0 0" }}>
+          {lang === "es" ? "Compare lado a lado y elija la mejor para usted." : "Compare side by side and choose the best fit for you."}
+        </p>
+      </div>
+
+      <div style={{ padding: "12px 20px 0" }}>
+        <GuaranteeBadge t={t} />
+      </div>
+
+      <div style={{ padding: "8px 20px 0" }}>
+        {savedOptions.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 32 }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>💾</div>
+            <p style={{ color: C.navy, fontWeight: 700, marginBottom: 16 }}>
+              {lang === "es" ? "Aún no ha guardado ninguna opción." : "You haven't saved any options yet."}
+            </p>
+            <BlueBtn onClick={onBack}>{lang === "es" ? "← Volver a Explorar" : "← Back to Browsing"}</BlueBtn>
+          </div>
+        ) : (
+          savedOptions.map(eq => {
+            const total = (eq.installation_price || 0) + adderTotal;
+            const monthly = Math.round(total / 60);
+            return (
+              <div key={eq.id} style={{ background: C.white, borderRadius: 16, padding: 16, marginBottom: 12, boxShadow: SHADOW, border: `1.5px solid ${C.gray}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontWeight: 900, fontSize: 15, color: C.navy }}>{eq.outdoor_brand} {eq.outdoor_series}</div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                      {eq.size_tons} Ton · SEER2 {eq.seer2} · {eq.brand_family}
+                    </div>
+                  </div>
+                  <button onClick={() => onToggleSaved(eq)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 18, cursor: "pointer", padding: 4 }} title="Remove">✕</button>
+                </div>
+                {eq.quality_pledge && (
+                  <span style={{ display: "inline-block", marginTop: 8, background: "#fef9c3", color: "#92400e", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
+                    🛡️ {eq.quality_pledge_years === 999 ? "Lifetime" : `${eq.quality_pledge_years}-Year`} Quality Pledge
+                  </span>
+                )}
+                <div style={{ margin: "12px 0 2px", fontSize: 24, fontWeight: 900, color: C.navy }}>${total.toLocaleString()}</div>
+                <div style={{ fontSize: 12, color: C.blue, fontWeight: 700, marginBottom: 12 }}>
+                  {lang === "es" ? "Desde" : "As low as"} ${monthly}/mo
+                </div>
+                <BlueBtn onClick={() => onSelect(eq)}>{t.scheduleThis}</BlueBtn>
+              </div>
+            );
+          })
+        )}
+
+        {savedOptions.length > 0 && (
+          <div style={{ textAlign: "center", marginTop: 12, marginBottom: 8 }}>
+            <WhiteBtn onClick={onBack}>{lang === "es" ? "← Seguir Explorando" : "← Keep Browsing"}</WhiteBtn>
+          </div>
+        )}
       </div>
     </Shell>
   );
@@ -2871,6 +2949,7 @@ export default function App() {
   const [brandFamily, setBrandFamily] = useState(null);
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [selectedEq, setSelectedEq] = useState(null);
+  const [savedOptions, setSavedOptions] = useState([]);
   const [customerInfo, setCustomerInfo] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [bookingRef, setBookingRef] = useState(null);
@@ -2883,6 +2962,9 @@ export default function App() {
   const t = T[lang];
   const go = s => setScreen(s);
   const ans = (k, v) => setAnswers(p => ({ ...p, [k]: v }));
+  const toggleSavedOption = (eq) => {
+    setSavedOptions(p => p.find(s => s.id === eq.id) ? p.filter(s => s.id !== eq.id) : [...p, eq]);
+  };
 
   // Build a full snapshot of current state for saving/auto-save
   const buildStateSnapshot = () => ({
@@ -3094,10 +3176,17 @@ export default function App() {
 
       {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote} lang={lang}
         brandFamily={brandFamily} selectedBrand={selectedBrand}
+        savedOptions={savedOptions} onToggleSaved={toggleSavedOption} onReviewSaved={() => go("savedReview")}
         onSelect={eq => { setSelectedEq(eq); go("s15"); }}
         onCompareTiers={() => go("s12")}
         onBack={() => go("s13")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
+      {screen === "savedReview" && (
+        <ReviewSavedOptions brand={brand} t={t} lang={lang} quote={quote}
+          savedOptions={savedOptions} onToggleSaved={toggleSavedOption}
+          onSelect={eq => { setSelectedEq(eq); go("s15"); }}
+          onBack={() => go("s14")} onCG={() => setShowCG(true)} />
+      )}
       {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote} lang={lang}
         selectedEq={selectedEq}
         onApprove={() => go("s16")}
