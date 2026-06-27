@@ -70,4 +70,35 @@
         <line x1="50" y1="32" x2="50" y2="54" stroke="white" stroke-width="3" stroke-linecap="round"/>
         <line x1="39" y1="43" x2="61" y2="43" stroke="white" stroke-width="3" stroke-linecap="round"/>
         <line x1="42.5" y1="35.5" x2="57.5" y2="50.5" stroke="white" stroke-width="3" stroke-linecap="round"/>
-        <line
+        <line x1="57.5" y1="35.5" x2="42.5" y2="50.5" stroke="white" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="50" cy="43" r="3.5" fill="white" />
+      </svg>
+      <div class="splash-text">Air-Care Connect</div>
+      <div class="splash-spinner"></div>
+    </div>
+
+    <div id="root"></div>
+
+    <script>
+      // Once React has mounted real content into #root, fade out and remove the splash
+      (function() {
+        var attempts = 0;
+        var check = setInterval(function() {
+          var root = document.getElementById('root');
+          var splash = document.getElementById('splash');
+          attempts++;
+          if (root && root.children.length > 0) {
+            clearInterval(check);
+            if (splash) {
+              splash.classList.add('hide');
+              setTimeout(function() { splash.remove(); }, 450);
+            }
+          } else if (attempts > 100) {
+            // Safety net: don't hide forever if something goes wrong (10s max)
+            clearInterval(check);
+          }
+        }, 50);
+      })();
+    </script>
+  </body>
+</html>
