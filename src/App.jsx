@@ -12,7 +12,7 @@ const FONT = "'Nunito', 'Segoe UI', sans-serif";
 const SUPABASE_URL = "https://dalertxugwgkfsyizmly.supabase.co";
 const FTL_DEALER_LINK = "https://beta.apptracker.ftlfinance.com/C214404";
 const MICROF_DEALER_LINK = "https://dealer.microf.com/?did=5cF7bP6dM1wH4sX8wB";
-const STRIPE_PUBLISHABLE_KEY = "pk_test_51TlgwhIH4oQGJWTRM76aWpR6oHRIRsy4ajl9Q4qTHtSgZCopVuyyAGZZNBaP0oAeUBKbWQlcoCs9yptLqyeqaXr300yXr7vCZi";
+const STRIPE_PUBLISHABLE_KEY = "pk_live_51TlgwUErPdNOiScKlm2DJkwMPJk0o7QmN6U7Q9h2DzFUVUjBEkRXRwsTANjwWnyeFsdb8ysSbEoqP6VlKFAHvQbG00CwKOJwM0";
 const SUPABASE_KEY = "sb_publishable_nPaxXCiHyZkO8MkRsz-1Zw_ZgPBlybk";
 
 // ── BRAND CONFIG ──────────────────────────────────────────────────────────────
@@ -3621,6 +3621,3 @@ export default function App() {
     </div>
   );
 }
-
-
-
