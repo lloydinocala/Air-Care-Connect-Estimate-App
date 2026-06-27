@@ -718,7 +718,89 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
 // ── COMFORT GUIDE: CONTEXT BUILDER ────────────────────────────────────────────
 // Builds a rich, current snapshot of where the customer is in their journey
 // so Comfort Guide can give genuinely relevant, grounded answers
-function buildCustomerContext(ctx) {
+// ── SHARED EMAIL TEMPLATE ──────────────────────────────────────────────────────
+// Builds a polished, branded HTML quote email used by both Comfort Guide
+// and the Screen 15 "Email This Quote" button — single source of truth.
+function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total, monthly, deposit }) {
+  const isEs = lang === "es";
+  const accent = "#00B0F0";
+  const navy = "#163E64";
+
+  const greeting = isEs ? `Hola${customerName ? " " + customerName : ""},` : `Hi${customerName ? " " + customerName : ""},`;
+  const intro = isEs
+    ? `Aquí está el resumen de su cotización${address ? " para " + address : ""}:`
+    : `Here's a summary of your quote${address ? " for " + address : ""}:`;
+  const guaranteeText = isEs
+    ? "Este precio está garantizado por 45 días — sin sorpresas, sin presión."
+    : "This price is guaranteed for 45 days — no surprises, no pressure.";
+  const monthlyLabel = isEs ? "Desde" : "As low as";
+  const depositLabel = isEs ? "Depósito del 50% al programar" : "50% deposit at scheduling";
+  const ctaText = isEs ? "Continuar Mi Estimado" : "Continue My Estimate";
+  const footerTagline = isEs ? "Siempre Conectados. Siempre Cómodos." : "Always Connected. Always Comfortable.";
+
+  const specRows = eq ? `
+    <tr><td style="padding:6px 0; color:#64748b; font-size:13px;">${isEs ? "Marca" : "Brand"}</td><td style="padding:6px 0; text-align:right; font-weight:700; color:${navy}; font-size:13px;">${eq.outdoor_brand || ""} ${eq.outdoor_series || ""}</td></tr>
+    <tr><td style="padding:6px 0; color:#64748b; font-size:13px; border-top:1px solid #e2e8f0;">${isEs ? "Tamaño" : "Size"}</td><td style="padding:6px 0; text-align:right; font-weight:700; color:${navy}; font-size:13px; border-top:1px solid #e2e8f0;">${eq.size_tons || ""} ${isEs ? "Toneladas" : "Tons"}</td></tr>
+    <tr><td style="padding:6px 0; color:#64748b; font-size:13px; border-top:1px solid #e2e8f0;">SEER2</td><td style="padding:6px 0; text-align:right; font-weight:700; color:${navy}; font-size:13px; border-top:1px solid #e2e8f0;">${eq.seer2 || ""}</td></tr>
+    ${eq.quality_pledge ? `<tr><td colspan="2" style="padding:10px 0 0; border-top:1px solid #e2e8f0;"><span style="background:#fef9c3; color:#92400e; border-radius:6px; padding:3px 10px; font-size:11px; font-weight:700;">${eq.quality_pledge_years === 999 ? "Lifetime" : eq.quality_pledge_years + "-" + (isEs ? "Año" : "Year")} Quality Pledge</span></td></tr>` : ""}
+  ` : "";
+
+  return `
+  <div style="font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; background:#CAEEFB; padding: 24px 16px;">
+    <div style="background:#ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.08);">
+
+      <!-- Header with shield logo -->
+      <div style="background: linear-gradient(135deg, ${accent}, ${navy}); padding: 28px 24px; text-align: center;">
+        <svg viewBox="0 0 100 100" width="56" height="56" style="display:block; margin: 0 auto 10px;">
+          <path d="M50 6 L84 6 Q91 6 91 13 L91 46 Q91 67 70 78 L50 78 Q29 67 29 46 L29 13 Q29 6 36 6 Z" fill="rgba(255,255,255,0.15)" stroke="#ffffff" stroke-width="3"/>
+          <line x1="50" y1="32" x2="50" y2="54" stroke="white" stroke-width="4" stroke-linecap="round"/>
+          <line x1="39" y1="43" x2="61" y2="43" stroke="white" stroke-width="4" stroke-linecap="round"/>
+          <line x1="42.5" y1="35.5" x2="57.5" y2="50.5" stroke="white" stroke-width="4" stroke-linecap="round"/>
+          <line x1="57.5" y1="35.5" x2="42.5" y2="50.5" stroke="white" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="50" cy="43" r="4" fill="white"/>
+        </svg>
+        <div style="color: #ffffff; font-weight: 900; font-size: 20px; letter-spacing: 0.5px;">${brandName}</div>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 28px 26px;">
+        <p style="color:${navy}; font-size:15px; font-weight:700; margin: 0 0 6px;">${greeting}</p>
+        <p style="color:#475569; font-size:14px; margin: 0 0 20px; line-height:1.5;">${intro}</p>
+
+        <!-- Price card -->
+        <div style="background:#f0f9ff; border:2px solid ${accent}; border-radius:16px; padding:20px; text-align:center; margin-bottom: 18px;">
+          <div style="font-size: 32px; font-weight: 900; color:${navy}; line-height:1;">$${total.toLocaleString()}</div>
+          <div style="font-size: 13px; color:${accent}; font-weight:700; margin-top:4px;">${monthlyLabel} $${monthly}/mo</div>
+          ${deposit ? `<div style="font-size: 12px; color:#64748b; margin-top:8px;">${depositLabel}: $${deposit.toLocaleString()}</div>` : ""}
+        </div>
+
+        ${eq ? `
+        <table style="width:100%; border-collapse:collapse; margin-bottom: 18px;">
+          ${specRows}
+        </table>
+        ` : ""}
+
+        <!-- Guarantee badge -->
+        <table style="width:100%; background:${navy}; border-radius:12px; margin-bottom: 22px;" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:14px 16px; color:#ffffff; font-size:13px; font-weight:700; text-align:center;">${guaranteeText}</td></tr>
+        </table>
+
+        <!-- CTA -->
+        <a href="https://systemestimate.air-careconnect.com" style="display:block; text-align:center; background:${accent}; color:#ffffff; padding:14px 24px; border-radius:50px; text-decoration:none; font-weight:800; font-size:15px;">
+          ${ctaText}
+        </a>
+      </div>
+
+      <!-- Footer -->
+      <div style="background:#f8fafc; padding: 18px 26px; text-align:center; border-top:1px solid #e2e8f0;">
+        <p style="color:#94a3b8; font-size:11px; margin:0; font-weight:600;">${brandName} - ${footerTagline}</p>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
+
   if (!ctx) return "The customer has not started their estimate yet — they're on the landing page.";
 
   const parts = [];
@@ -821,26 +903,17 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
 
       // Send email if we have one
       if (email) {
-        const priceLine = total ? `$${total.toLocaleString()} installed` : "your custom estimate";
-        const sysLine = eq ? `${eq.outdoor_brand} ${eq.outdoor_series} (${eq.size_tons} Ton, SEER2 ${eq.seer2})` : "your AC system";
+        const monthly = total ? Math.round(total / 60) : 0;
         try {
           const emailResp = await fetch("/api/send-email", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               to: email,
               subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
-              htmlContent: `
-                <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-                  <h2 style="color: #163E64;">${lang === "es" ? "Su Cotización" : "Your Quote"}</h2>
-                  <p>${lang === "es" ? "Hola" : "Hi"} ${name || ""},</p>
-                  <p>${lang === "es" ? "Aquí está el resumen de su cotización para" : "Here's a summary of your quote for"} ${address}:</p>
-                  <div style="background:#f0f9ff; border:2px solid #00B0F0; border-radius:12px; padding:16px; margin:16px 0;">
-                    <strong>${sysLine}</strong><br/>
-                    <span style="font-size:24px; font-weight:900; color:#163E64;">${priceLine}</span>
-                  </div>
-                  <p>${lang === "es" ? "Esta cotización está garantizada por 45 días." : "This quote is guaranteed for 45 days."}</p>
-                </div>
-              `,
+              htmlContent: buildQuoteEmailHtml({
+                lang, brandName: brand.name, customerName: name, address,
+                eq, total: total || 0, monthly, deposit: null,
+              }),
             }),
           });
           const emailData = await emailResp.json().catch(() => ({}));
@@ -2249,26 +2322,15 @@ function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG
     setSendingEmail(true);
     setEmailError("");
     try {
-      const priceLine = `$${total.toLocaleString()} installed`;
-      const sysLine = `${selectedEq.outdoor_brand} ${selectedEq.outdoor_series} (${selectedEq.size_tons} Ton, SEER2 ${selectedEq.seer2})`;
       const r = await fetch("/api/send-email", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: emailInput.trim(),
           subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
-          htmlContent: `
-            <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
-              <h2 style="color: #163E64;">${lang === "es" ? "Su Cotización" : "Your Quote"}</h2>
-              <p>${lang === "es" ? "Aquí está el resumen de su cotización:" : "Here's a summary of your quote:"}</p>
-              <div style="background:#f0f9ff; border:2px solid #00B0F0; border-radius:12px; padding:16px; margin:16px 0;">
-                <strong>${sysLine}</strong><br/>
-                <span style="font-size:24px; font-weight:900; color:#163E64;">${priceLine}</span><br/>
-                <span style="font-size:13px; color:#64748b;">${lang === "es" ? "Desde" : "As low as"} $${monthly}/mo</span>
-              </div>
-              <p>${lang === "es" ? "Esta cotización está garantizada por 45 días." : "This quote is guaranteed for 45 days."}</p>
-              <p style="color:#64748b; font-size:13px;">${brand.name}</p>
-            </div>
-          `,
+          htmlContent: buildQuoteEmailHtml({
+            lang, brandName: brand.name, customerName: null, address: null,
+            eq: selectedEq, total, monthly, deposit,
+          }),
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -2784,7 +2846,7 @@ function CheckoutAffirm({ brand, t, total, onSuccess, onBack, onCG }) {
 }
 
 // ── CHECKOUT: SCHEDULING CALENDAR ─────────────────────────────────────────────
-function CheckoutCalendar({ brand, t, paymentInfo, onConfirm, onBack, onCG }) {
+function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG }) {
   const [availableDates, setAvailableDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -2819,6 +2881,9 @@ function CheckoutCalendar({ brand, t, paymentInfo, onConfirm, onBack, onCG }) {
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.calendarTitle}</h1>
         <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{t.calendarDesc}</p>
+        <p style={{ fontSize: 11, color: "#94a3b8", margin: "6px 0 0", fontStyle: "italic" }}>
+          {lang === "es" ? "No se preocupe — puede cambiar o cancelar esto en cualquier momento antes de la instalación." : "Don't worry — you can change or cancel this anytime before installation day."}
+        </p>
       </div>
 
       <div style={{ padding: "16px 20px 0" }}>
@@ -3015,6 +3080,48 @@ export default function App() {
   const ans = (k, v) => setAnswers(p => ({ ...p, [k]: v }));
   const toggleSavedOption = (eq) => {
     setSavedOptions(p => p.find(s => s.id === eq.id) ? p.filter(s => s.id !== eq.id) : [...p, eq]);
+  };
+
+  // Called when payment succeeds (card/ACH) or financing application is initiated (FTL/Microf).
+  // The install slot was already held when the customer picked their date on the Schedule screen,
+  // so this step just finalizes the actual booking record with payment details.
+  const finalizeBooking = async (paymentInfoArg) => {
+    const total = (selectedEq?.installation_price || 0) + (quote?.adderTotal || 0);
+    const isFinancing = paymentInfoArg?.method === "ftl" || paymentInfoArg?.method === "microf";
+
+    try {
+      const bookingPayload = {
+        customer_name: customerInfo?.name || null,
+        customer_email: customerInfo?.email || null,
+        customer_phone: customerInfo?.phone || null,
+        contact_preference: customerInfo?.contactPref || null,
+        install_date: installDate || null,
+        install_address: property?.address || null,
+        payment_method: paymentInfoArg?.method || null,
+        payment_status: isFinancing ? "pending" : "deposit_paid",
+        deposit_amount: isFinancing ? 0 : Math.round(total * 0.5),
+        financing_company: isFinancing ? paymentInfoArg.method : null,
+        financing_status: isFinancing ? "pending" : "not_applicable",
+        financing_applied_at: isFinancing ? new Date().toISOString() : null,
+        slot_held_until: new Date(Date.now() + (paymentInfoArg?.holdHours || 0) * 3600000).toISOString(),
+        booking_status: "confirmed",
+        organization_id: 1,
+      };
+
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/bookings`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(bookingPayload),
+      });
+      const data = await r.json();
+      const created = Array.isArray(data) ? data[0] : data;
+      setBookingRef(created?.booking_reference || `ACB-${new Date().getFullYear()}-PENDING`);
+    } catch(e) {
+      console.error("Booking creation error:", e);
+      setBookingRef(`ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`);
+    }
+
+    go("confirmation");
   };
 
   // Build a full snapshot of current state for saving/auto-save
@@ -3244,27 +3351,45 @@ export default function App() {
         onBack={() => go("s14")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s16" && <S16_PersonalInfo brand={brand} t={t}
-        onContinue={info => { setCustomerInfo(info); go("checkout"); }}
+        onContinue={info => { setCustomerInfo(info); go("schedule"); }}
         onBack={() => go("s15")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+
+      {screen === "schedule" && (
+        <CheckoutCalendar brand={brand} t={t} lang={lang} paymentInfo={paymentInfo}
+          onConfirm={async (date) => {
+            setInstallDate(date.available_date);
+            // Hold the slot immediately upon date selection, before payment.
+            // A generous default hold (48hrs) protects the slot while they complete payment/financing.
+            try {
+              await fetch(`${SUPABASE_URL}/rest/v1/availability?available_date=eq.${date.available_date}`, {
+                method: "PATCH",
+                headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+                body: JSON.stringify({ booked_slots: (date.booked_slots || 0) + 1 }),
+              });
+            } catch(e) { console.error("Slot hold error:", e); }
+            go("checkout");
+          }}
+          onBack={() => go("s16")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+      )}
 
       {screen === "checkout" && selectedEq && quote && (
         <CheckoutPayment brand={brand} t={t} quote={quote} selectedEq={selectedEq} customerInfo={customerInfo}
           onSelectMethod={method => go(`pay_${method}`)}
-          onBack={() => go("s16")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("schedule")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_card" && selectedEq && (
         <CheckoutCard brand={brand} t={t}
           deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
           customerInfo={customerInfo}
-          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
           onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_ach" && selectedEq && (
         <CheckoutACH brand={brand} t={t}
           deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
-          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
           onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
@@ -3272,7 +3397,7 @@ export default function App() {
         <CheckoutFTL brand={brand} t={t}
           total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           customerInfo={customerInfo}
-          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
+          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
           onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
@@ -3280,62 +3405,7 @@ export default function App() {
         <CheckoutMicrof brand={brand} t={t}
           total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           customerInfo={customerInfo}
-          onSuccess={info => { setPaymentInfo(info); go("schedule"); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
-      )}
-
-      {screen === "schedule" && (
-        <CheckoutCalendar brand={brand} t={t} paymentInfo={paymentInfo}
-          onConfirm={async (date) => {
-            setInstallDate(date.available_date);
-
-            const total = (selectedEq?.installation_price || 0) + (quote?.adderTotal || 0);
-            const isFinancing = paymentInfo?.method === "ftl" || paymentInfo?.method === "microf";
-
-            try {
-              const bookingPayload = {
-                customer_name: customerInfo?.name || null,
-                customer_email: customerInfo?.email || null,
-                customer_phone: customerInfo?.phone || null,
-                contact_preference: customerInfo?.contactPref || null,
-                install_date: date.available_date,
-                install_address: property?.address || null,
-                payment_method: paymentInfo?.method || null,
-                payment_status: isFinancing ? "pending" : "deposit_paid",
-                deposit_amount: isFinancing ? 0 : Math.round(total * 0.5),
-                financing_company: isFinancing ? paymentInfo.method : null,
-                financing_status: isFinancing ? "pending" : "not_applicable",
-                financing_applied_at: isFinancing ? new Date().toISOString() : null,
-                slot_held_until: new Date(Date.now() + (paymentInfo?.holdHours || 0) * 3600000).toISOString(),
-                booking_status: "confirmed",
-                organization_id: 1,
-              };
-
-              const r = await fetch(`${SUPABASE_URL}/rest/v1/bookings`, {
-                method: "POST",
-                headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", Prefer: "return=representation" },
-                body: JSON.stringify(bookingPayload),
-              });
-              const data = await r.json();
-              const created = Array.isArray(data) ? data[0] : data;
-
-              setBookingRef(created?.booking_reference || `ACB-${new Date().getFullYear()}-PENDING`);
-
-              // Mark the availability slot as booked
-              if (date.available_date) {
-                await fetch(`${SUPABASE_URL}/rest/v1/availability?available_date=eq.${date.available_date}`, {
-                  method: "PATCH",
-                  headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
-                  body: JSON.stringify({ booked_slots: (date.booked_slots || 0) + 1 }),
-                });
-              }
-            } catch(e) {
-              console.error("Booking creation error:", e);
-              setBookingRef(`ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`);
-            }
-
-            go("confirmation");
-          }}
+          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
           onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
       )}
 
