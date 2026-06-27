@@ -2027,9 +2027,6 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
     setSavedIds(p => p.includes(eq.id) ? p.filter(id => id !== eq.id) : [...p, eq.id]);
   };
 
-  const allSystems = [...recommended, ...equipment];
-  const savedSystems = allSystems.filter(e => savedIds.includes(e.id));
-
   if (loading) return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
