@@ -2056,15 +2056,29 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
         {/* Saved options indicator — visible whenever the customer has saved anything */}
         {savedOptions.length > 0 && (
           <button onClick={onReviewSaved} style={{
-            width: "100%", background: C.navy, color: C.white, border: "none",
-            borderRadius: 14, padding: "12px 16px", marginBottom: 14, cursor: "pointer",
-            fontFamily: FONT, display: "flex", alignItems: "center", justifyContent: "space-between",
-            boxShadow: SHADOW,
+            width: "100%", background: `linear-gradient(135deg, ${C.blue}, #0090c8)`, color: C.white,
+            border: `2px solid ${C.white}`, borderRadius: 16, padding: "16px 18px", marginBottom: 16,
+            cursor: "pointer", fontFamily: FONT, display: "flex", alignItems: "center", justifyContent: "space-between",
+            boxShadow: "0 6px 18px rgba(0,176,240,0.45)",
+            animation: "pulseGlow 2s ease-in-out infinite",
           }}>
-            <span style={{ fontWeight: 800, fontSize: 13 }}>
-              💾 {savedOptions.length} {lang === "es" ? "Opciones Guardadas" : "Saved Option" + (savedOptions.length > 1 ? "s" : "")}
+            <style>{`
+              @keyframes pulseGlow {
+                0%, 100% { box-shadow: 0 6px 18px rgba(0,176,240,0.45); }
+                50% { box-shadow: 0 6px 24px rgba(0,176,240,0.75); }
+              }
+            `}</style>
+            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{
+                background: C.white, color: C.blue, borderRadius: "50%",
+                width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: 900, fontSize: 15, flexShrink: 0,
+              }}>{savedOptions.length}</span>
+              <span style={{ fontWeight: 900, fontSize: 15 }}>
+                {lang === "es" ? "Opciones Guardadas" : `Saved Option${savedOptions.length > 1 ? "s" : ""}`}
+              </span>
             </span>
-            <span style={{ fontWeight: 900, fontSize: 13 }}>{lang === "es" ? "Revisar" : "Review"} →</span>
+            <span style={{ fontWeight: 900, fontSize: 15 }}>{lang === "es" ? "Revisar" : "Review"} →</span>
           </button>
         )}
 
@@ -3300,3 +3314,4 @@ export default function App() {
     </div>
   );
 }
+
