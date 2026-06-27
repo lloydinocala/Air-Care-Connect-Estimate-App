@@ -114,6 +114,7 @@ const T = {
     contactPref: "How would you like us to confirm your appointment?",
     prefText: "Text Message", prefVoice: "Phone Call", prefBoth: "Both (Preferred)",
     continueToPayment: "Continue to Payment Options",
+    continueToSchedule: "Continue to Schedule My Installation",
     saveProgress: "Save My Progress",
     savedTitle: "Progress Saved!",
     savedDesc: "We've sent a link to your email. Click it anytime to resume your estimate on any device.",
@@ -257,6 +258,7 @@ const T = {
     contactPref: "¿Cómo le gustaría que confirmemos su cita?",
     prefText: "Mensaje de Texto", prefVoice: "Llamada Telefónica", prefBoth: "Ambos (Preferido)",
     continueToPayment: "Continuar a Opciones de Pago",
+    continueToSchedule: "Continuar a Programar Mi Instalación",
     saveProgress: "Guardar Mi Progreso",
     savedTitle: "¡Progreso Guardado!",
     savedDesc: "Le hemos enviado un enlace a su correo. Haga clic en cualquier momento para continuar.",
@@ -2514,7 +2516,7 @@ function S16_PersonalInfo({ brand, t, onContinue, onBack, onCG, onSave }) {
           ))}
         </div>
         <BlueBtn onClick={() => valid && onContinue(form)} disabled={!valid}>
-          {t.continueToPayment}
+          {t.continueToSchedule}
         </BlueBtn>
         <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>
           Your information is private and secure. We will never sell your data or contact you without your permission.
@@ -3423,4 +3425,5 @@ export default function App() {
     </div>
   );
 }
+
 
