@@ -444,29 +444,6 @@ const QuoteEngine = {
     return { equipment: [], actualTons: requestedTons, sizeAdjusted: false };
   },
 
-  // Find which brand family actually carries a given brand, searching both directions
-  // from the customer's originally chosen tier. Returns null if brand isn't found anywhere.
-  findBrandFamilyForBrand: async (systemType, tons, homeType, targetBrand, startingFamily) => {
-    const order = QuoteEngine.BRAND_FAMILY_ORDER;
-    const startIdx = order.indexOf(startingFamily);
-    if (startIdx === -1) return null;
-
-    // Search outward from the starting tier: same tier first, then alternating up/down
-    const searchOrder = [startIdx];
-    for (let dist = 1; dist < order.length; dist++) {
-      if (startIdx + dist < order.length) searchOrder.push(startIdx + dist);
-      if (startIdx - dist >= 0) searchOrder.push(startIdx - dist);
-    }
-
-    for (const idx of searchOrder) {
-      const family = order[idx];
-      const results = await QuoteEngine.fetchEquipment(systemType, tons, family, false, homeType);
-      const hasBrand = results.some(e => e.outdoor_brand === targetBrand);
-      if (hasBrand) return family;
-    }
-    return null;
-  },
-
   // Get price range for a system type + tonnage
   getPriceRange: (equipment, adderTotal) => {
     if (!equipment.length) return { min: 0, max: 0 };
@@ -964,6 +941,9 @@ If a customer compares Air-Care Connect to "getting a few quotes" or traditional
 SEER / EFFICIENCY UPSELL GUIDANCE (reactive only — never volunteer this unprompted):
 Only discuss higher-SEER options and long-term energy savings if the customer specifically asks about SEER ratings, efficiency, or energy bills. When they do ask, explain genuinely: a higher SEER2 rating means the system uses less electricity to produce the same cooling, which can meaningfully lower monthly electric bills over the system's lifespan, especially in Florida's climate where AC runs most of the year. If their current equipment options include a higher-efficiency choice, you can mention it's available to compare. Never bring this up as an unprompted upsell — only respond to genuine interest.
 
+WHEN A CUSTOMER ASKS ABOUT A BRAND WE DON'T CARRY:
+Air-Care Connect deliberately and selectively chooses which brands and specific models to offer, based on real field performance, reliability, and parts availability — this list can change throughout the year as manufacturers issue corrections or as field data changes. If a customer asks why a specific brand isn't offered, or asks about a brand you don't see in the available options, respond with calm, confident, non-disparaging language. Never name specific defects, recalls, or failure modes — that creates liability and isn't your role to adjudicate. A good response is something like: "We selectively choose which brands and models we install based on field performance and reliability, and that lineup can shift during the year. We're not currently offering that one, but we'd be glad to show you excellent alternatives in a similar price range that we stand behind." Then proactively offer to help them look at brand families/options that ARE available. Never apologize excessively or imply something is wrong with their question — this is simply normal, responsible business practice.
+
 SENDING THE ESTIMATE (when a customer wants their quote emailed or texted to them):
 If a customer asks for their estimate to be sent to them, emailed, texted, or says something like "can you send this to me" or "I want to think about it, can I get this by email" — you can actually do this for real, not just promise it. Here's exactly how:
 1. Let them know you can send it right now, and ask for their name, email, and phone number (explain the phone number is so they can also get a text confirmation, which is optional but recommended)
@@ -1020,6 +1000,9 @@ POSICIONAMIENTO COMPETITIVO (solo cuando sea relevante):
 
 GUÍA DE MEJORA SEER/EFICIENCIA (solo reactivo — nunca ofrecer sin que se pregunte):
 Solo discute opciones de mayor SEER y ahorro de energía a largo plazo si el cliente pregunta específicamente sobre clasificaciones SEER, eficiencia, o facturas de energía. Cuando preguntan, explica genuinamente que una clasificación SEER2 más alta significa que el sistema usa menos electricidad para producir el mismo enfriamiento.
+
+CUANDO UN CLIENTE PREGUNTA SOBRE UNA MARCA QUE NO OFRECEMOS:
+Air-Care Connect elige deliberadamente y de manera selectiva qué marcas y modelos específicos ofrecer, basándose en el rendimiento real en campo, confiabilidad y disponibilidad de partes — esta lista puede cambiar durante el año según correcciones del fabricante o nuevos datos de campo. Si un cliente pregunta por qué no ofrecemos una marca específica, responde con un lenguaje calmado, seguro y sin desacreditar a nadie. Nunca menciones defectos específicos, retiros del mercado, o fallas — eso crea responsabilidad legal y no es tu rol juzgarlo. Una buena respuesta es algo como: "Elegimos selectivamente qué marcas y modelos instalamos basándonos en el rendimiento de campo y la confiabilidad, y esa selección puede cambiar durante el año. Actualmente no ofrecemos esa marca, pero con gusto le mostramos excelentes alternativas en un rango de precio similar que respaldamos completamente." Luego ofrece proactivamente ayudar a explorar las opciones que SÍ están disponibles.
 
 ENVIAR LA COTIZACIÓN (cuando un cliente quiere que se le envíe por correo o mensaje de texto):
 Si un cliente pide que su cotización se le envíe, por correo, por mensaje de texto, o dice algo como "¿puedes enviarme esto?" — puedes hacerlo realmente, no solo prometerlo. Así es exactamente:
@@ -1996,13 +1979,12 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG,
 }
 
 // ── SCREEN 14: EQUIPMENT RESULTS ──────────────────────────────────────────────
-function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onSwitchFamily }) {
+function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave }) {
   const [equipment, setEquipment] = useState([]);
   const [recommended, setRecommended] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savedIds, setSavedIds] = useState([]);
   const [sizeNote, setSizeNote] = useState(null);
-  const [tierSuggestion, setTierSuggestion] = useState(null);
   const { property, answers, adderTotal } = quote;
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
   const homeType = answers.detectedHomeType || property.type || "site-built";
@@ -2012,7 +1994,6 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
     const load = async () => {
       setLoading(true);
       setSizeNote(null);
-      setTierSuggestion(null);
       let recResults = [], allResults = [];
       let anyAdjusted = false, finalTons = tons;
 
@@ -2024,18 +2005,6 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
         const fallback = await QuoteEngine.fetchEquipmentWithSizeFallback(st, tons, brandFamily, homeType, selectedBrand);
         allResults = [...allResults, ...fallback.equipment];
         if (fallback.sizeAdjusted) { anyAdjusted = true; finalTons = fallback.actualTons; }
-      }
-
-      // If a specific brand was requested and STILL nothing found at any size in this tier,
-      // check if that brand exists in a different price tier
-      if (selectedBrand !== "recommended" && allResults.length === 0 && recResults.length === 0) {
-        for (const st of systemTypes) {
-          const otherFamily = await QuoteEngine.findBrandFamilyForBrand(st, tons, homeType, selectedBrand, brandFamily);
-          if (otherFamily && otherFamily !== brandFamily) {
-            setTierSuggestion(otherFamily);
-            break;
-          }
-        }
       }
 
       if (anyAdjusted && allResults.length > 0) {
@@ -2087,20 +2056,6 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
         </div>
       )}
 
-      {tierSuggestion && (
-        <div style={{ padding: "0 20px" }}>
-          <div style={{ background: "#f0f9ff", border: `2px solid ${C.blue}`, borderRadius: 12, padding: "14px", marginBottom: 4 }}>
-            <p style={{ margin: "0 0 10px", fontSize: 13, color: C.navy, fontWeight: 700, lineHeight: 1.5 }}>
-              {selectedBrand} isn't available in {brandFamily}, but it IS available in our {tierSuggestion} lineup — pricing may differ slightly. Would you like to see those options?
-            </p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <BlueBtn onClick={() => onSwitchFamily(tierSuggestion)} style={{ flex: 1, padding: "10px", fontSize: 13 }}>Yes, Show Me</BlueBtn>
-              <WhiteBtn onClick={onBack} style={{ flex: 1, padding: "10px", fontSize: 13 }}>Choose Different Brand</WhiteBtn>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div style={{ padding: "8px 20px 0" }}>
         {/* Recommended systems */}
         {recommended.length > 0 && (
@@ -2136,13 +2091,13 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
           </div>
         )}
 
-        {/* Truly nothing found anywhere — honest message + real navigation */}
-        {recommended.length === 0 && equipment.length === 0 && !tierSuggestion && (
+        {/* Truly nothing found for this brand at this size — honest message + real navigation */}
+        {recommended.length === 0 && equipment.length === 0 && (
           <div style={{ textAlign: "center", padding: 32 }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
             <p style={{ color: C.navy, fontWeight: 700, marginBottom: 4 }}>
               {selectedBrand !== "recommended"
-                ? `${selectedBrand} doesn't have a system available for your home's size in any price tier right now.`
+                ? `${selectedBrand} doesn't have a system available for your home's size right now.`
                 : "No systems found for this combination."}
             </p>
             <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>
@@ -3157,7 +3112,6 @@ export default function App() {
       {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote}
         brandFamily={brandFamily} selectedBrand={selectedBrand}
         onSelect={eq => { setSelectedEq(eq); go("s15"); }}
-        onSwitchFamily={newFamily => setBrandFamily(newFamily)}
         onBack={() => go("s13")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote} lang={lang}
@@ -3273,4 +3227,3 @@ export default function App() {
     </div>
   );
 }
-
