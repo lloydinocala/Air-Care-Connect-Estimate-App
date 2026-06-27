@@ -685,7 +685,7 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
           {t.scheduleThis}
         </BlueBtn>
         <WhiteBtn onClick={() => onSave(eq)} style={{ flex: 1, padding: "11px 12px", fontSize: 12, opacity: saved ? 0.5 : 1 }}>
-          {saved ? (lang === "es" ? "✓ Guardado" : "✓ Saved") : t.saveOption}
+          {saved ? `✓ ${t.saved}` : t.saveOption}
         </WhiteBtn>
       </div>
     </div>
@@ -1988,6 +1988,9 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
     setSavedIds(p => p.includes(eq.id) ? p.filter(id => id !== eq.id) : [...p, eq.id]);
   };
 
+  const allSystems = [...recommended, ...equipment];
+  const savedSystems = allSystems.filter(e => savedIds.includes(e.id));
+
   if (loading) return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
@@ -2007,6 +2010,28 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
       <div style={{ padding: "12px 20px 0" }}>
         <GuaranteeBadge t={t} />
       </div>
+
+      {savedSystems.length > 0 && (
+        <div style={{ padding: "8px 20px 0" }}>
+          <div style={{ background: "#f0f9ff", border: `2px solid ${C.blue}`, borderRadius: 14, padding: "12px 14px" }}>
+            <div style={{ fontWeight: 900, fontSize: 13, color: C.navy, marginBottom: 8 }}>
+              💾 {t.savedOptions} ({savedSystems.length})
+            </div>
+            {savedSystems.map(eq => (
+              <div key={eq.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: `1px solid ${C.gray}` }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{eq.outdoor_brand} {eq.outdoor_series}</div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>${((eq.installation_price || 0) + adderTotal).toLocaleString()}</div>
+                </div>
+                <button onClick={() => onSelect(eq)} style={{ background: C.blue, color: C.white, border: "none", borderRadius: 20, padding: "5px 12px", fontWeight: 700, fontSize: 11, cursor: "pointer", fontFamily: FONT }}>
+                  View →
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ padding: "8px 20px 0" }}>
         {/* Recommended systems */}
         {recommended.length > 0 && (
