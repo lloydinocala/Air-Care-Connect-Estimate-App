@@ -1097,6 +1097,58 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
   const endRef = useRef(null);
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [msgs]);
 
+  // Capture a home visit request as a real lead - pursued as a lead, not a sale.
+  // Notifies the office team by email so it gets followed up on, not just stored silently.
+  const requestHomeVisit = async (name, phone, email, notes) => {
+    setSendStatus("sending");
+    try {
+      const address = customerContext?.property?.address || null;
+
+      await fetch(`${SUPABASE_URL}/rest/v1/leads`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({
+          lead_type: "home_visit_request",
+          property_address: address,
+          customer_name: name,
+          customer_email: email || null,
+          customer_phone: phone,
+          notes: notes || null,
+          language: lang,
+          lead_status: "new",
+          organization_id: 1,
+        }),
+      });
+
+      // Notify the office so a real human follows up - this is the whole point of the feature
+      try {
+        await fetch("/api/send-email", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: "info@air-careconnect.com",
+            subject: `New Home Visit Request - ${name}`,
+            htmlContent: `
+              <div style="font-family: sans-serif; max-width: 480px;">
+                <h2 style="color: #163E64;">New Home Visit Request</h2>
+                <p><strong>Name:</strong> ${name}</p>
+                <p><strong>Phone:</strong> ${phone}</p>
+                ${email ? `<p><strong>Email:</strong> ${email}</p>` : ""}
+                ${address ? `<p><strong>Address:</strong> ${address}</p>` : ""}
+                ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ""}
+                <p style="color:#64748b; font-size:13px;">Submitted via Comfort Guide - pursue as a lead.</p>
+              </div>
+            `,
+          }),
+        });
+      } catch(e) { console.warn("Office notification email error:", e); }
+
+      setSendStatus("sent");
+    } catch(e) {
+      console.error("Home visit request error:", e);
+      setSendStatus("error");
+    }
+  };
+
   // Actually send the estimate via email + SMS, and save the quote to Supabase
   const sendEstimateToCustomer = async (name, email, phone) => {
     setSendStatus("sending");
@@ -1238,6 +1290,17 @@ Only discuss higher-SEER options and long-term energy savings if the customer sp
 WHEN A CUSTOMER ASKS ABOUT A BRAND WE DON'T CARRY:
 Air-Care Connect deliberately and selectively chooses which brands and specific models to offer, based on real field performance, reliability, and parts availability — this list can change throughout the year as manufacturers issue corrections or as field data changes. If a customer asks why a specific brand isn't offered, or asks about a brand you don't see in the available options, respond with calm, confident, non-disparaging language. Never name specific defects, recalls, or failure modes — that creates liability and isn't your role to adjudicate. A good response is something like: "We selectively choose which brands and models we install based on field performance and reliability, and that lineup can shift during the year. We're not currently offering that one, but we'd be glad to show you excellent alternatives in a similar price range that we stand behind." Then proactively offer to help them look at brand families/options that ARE available. Never apologize excessively or imply something is wrong with their question — this is simply normal, responsible business practice.
 
+OFFERING AN IN-PERSON HOME VISIT (for customers who prefer a live conversation over the self-service app):
+While most customers are comfortable with the instant, self-service quoting process, some genuinely prefer talking to a real person in their home before deciding — and that's completely fine. You can offer this naturally in two situations:
+1. REACTIVELY: if a customer directly asks for an in-person visit, a salesperson, or says something like "I'd rather have someone come look at it"
+2. PROACTIVELY but sparingly: if you notice genuine, repeated hesitation after you've already tried the objection-handling approaches above (Feel-Felt-Found) and the customer still seems stuck or uncomfortable with the self-service format itself (not just price hesitation) — you can gently mention this as an alternative, once, without being pushy: something like "If you'd ever prefer to have someone come take a look in person and walk through it with you, that's available too — just let me know."
+Never offer this as a first response to ordinary price objections — exhaust the normal objection-handling approach first, since most price concerns are genuinely better resolved by the guarantee/financing information, not by escalating to a salesperson.
+If a customer wants this:
+1. Collect their name and phone number (a callback number is required), email is optional
+2. Ask briefly if there's anything specific they'd like the visit to address, but don't push for this if they don't offer it
+3. Once you have name + phone AND they've confirmed they want this, use the request_home_visit tool
+4. This creates a real lead for the office team to follow up on - be honest that a team member will call them, not that anything is automatically scheduled or guaranteed yet
+
 SENDING THE ESTIMATE (when a customer wants their quote emailed or texted to them):
 If a customer asks for their estimate to be sent to them, emailed, texted, or says something like "can you send this to me" or "I want to think about it, can I get this by email" — you can actually do this for real, not just promise it. Here's exactly how:
 1. Let them know you can send it right now, and ask for their name, email, and phone number (explain the phone number is so they can also get a text confirmation, which is optional but recommended)
@@ -1298,6 +1361,16 @@ Solo discute opciones de mayor SEER y ahorro de energía a largo plazo si el cli
 CUANDO UN CLIENTE PREGUNTA SOBRE UNA MARCA QUE NO OFRECEMOS:
 Air-Care Connect elige deliberadamente y de manera selectiva qué marcas y modelos específicos ofrecer, basándose en el rendimiento real en campo, confiabilidad y disponibilidad de partes — esta lista puede cambiar durante el año según correcciones del fabricante o nuevos datos de campo. Si un cliente pregunta por qué no ofrecemos una marca específica, responde con un lenguaje calmado, seguro y sin desacreditar a nadie. Nunca menciones defectos específicos, retiros del mercado, o fallas — eso crea responsabilidad legal y no es tu rol juzgarlo. Una buena respuesta es algo como: "Elegimos selectivamente qué marcas y modelos instalamos basándonos en el rendimiento de campo y la confiabilidad, y esa selección puede cambiar durante el año. Actualmente no ofrecemos esa marca, pero con gusto le mostramos excelentes alternativas en un rango de precio similar que respaldamos completamente." Luego ofrece proactivamente ayudar a explorar las opciones que SÍ están disponibles.
 
+OFRECER UNA VISITA A DOMICILIO EN PERSONA (para clientes que prefieren una conversación en vivo en lugar de la aplicación de autoservicio):
+Algunos clientes prefieren genuinamente hablar con una persona real en su hogar antes de decidir, y eso está completamente bien. Puedes ofrecer esto de dos maneras:
+1. REACTIVAMENTE: si un cliente pide directamente una visita en persona o dice algo como "preferiría que alguien viniera a verlo"
+2. PROACTIVAMENTE pero con moderación: si notas duda genuina y repetida después de haber intentado el enfoque de manejo de objeciones, puedes mencionar esto suavemente como alternativa, una vez, sin ser insistente
+Nunca ofrezcas esto como primera respuesta a objeciones de precio comunes.
+Si un cliente quiere esto:
+1. Recopila su nombre y número de teléfono (requerido para devolverle la llamada), el correo es opcional
+2. Una vez que tengas nombre + teléfono Y hayan confirmado que quieren esto, usa la herramienta request_home_visit
+3. Esto crea un cliente potencial real para que el equipo de oficina dé seguimiento - sé honesto en que un miembro del equipo le llamará, no que algo se programa automáticamente
+
 ENVIAR LA COTIZACIÓN (cuando un cliente quiere que se le envíe por correo o mensaje de texto):
 Si un cliente pide que su cotización se le envíe, por correo, por mensaje de texto, o dice algo como "¿puedes enviarme esto?" — puedes hacerlo realmente, no solo prometerlo. Así es exactamente:
 1. Avísale que puedes enviarlo ahora mismo, y pide su nombre, correo electrónico y número de teléfono (explica que el teléfono es para que también reciba una confirmación por mensaje de texto, opcional pero recomendado)
@@ -1331,6 +1404,19 @@ REGLAS:
               },
               required: ["name", "email", "phone"],
             },
+          }, {
+            name: "request_home_visit",
+            description: "Call this ONLY once you have collected the customer's name and phone number (email optional), AND they have clearly confirmed they want a team member to schedule an in-person home visit/estimate. This is for customers who prefer a live, in-person conversation rather than continuing with the self-service app. Do not call this if name or phone is missing or unconfirmed.",
+            input_schema: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "Customer's full name" },
+                phone: { type: "string", description: "Customer's phone number - required for callback" },
+                email: { type: "string", description: "Customer's email address - optional" },
+                notes: { type: "string", description: "Any relevant context the customer shared about why they want a visit, their availability, or specific concerns - keep brief" },
+              },
+              required: ["name", "phone"],
+            },
           }],
         }),
       });
@@ -1343,6 +1429,13 @@ REGLAS:
         setMsgs(p => [...p, { role: "assistant", content: lang === "es"
           ? `✅ ¡Listo! Hemos enviado su cotización a ${email}${phone ? " y por mensaje de texto a " + phone : ""}.`
           : `✅ Done! We've sent your estimate to ${email}${phone ? " and via text to " + phone : ""}.` }]);
+      } else if (d.toolUse?.name === "request_home_visit") {
+        const { name, phone, email, notes } = d.toolUse.input;
+        setMsgs(p => [...p, { role: "assistant", content: d.text || (lang === "es" ? "¡Perfecto! Enviando su solicitud ahora..." : "Perfect! Submitting your request now...") }]);
+        await requestHomeVisit(name, phone, email, notes);
+        setMsgs(p => [...p, { role: "assistant", content: lang === "es"
+          ? `✅ ¡Listo! Un miembro de nuestro equipo le llamará pronto al ${phone} para programar su visita.`
+          : `✅ Done! A team member will call you at ${phone} soon to schedule your visit.` }]);
       } else if (d.text) {
         setMsgs(p => [...p, { role: "assistant", content: d.text }]);
       } else {
@@ -3758,6 +3851,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
