@@ -943,7 +943,7 @@ function buildConfirmationEmailHtml({ lang, brandName, customerName, bookingRef,
   const whatNextHeading = isEs ? "Qué Sigue" : "What Happens Next";
 
   const formattedDate = installDate
-    ? new Date(installDate).toLocaleDateString(isEs ? "es-ES" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+    ? new Date(installDate + "T00:00:00").toLocaleDateString(isEs ? "es-ES" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
     : "";
 
   const nextSteps = isFinancing
@@ -3140,7 +3140,7 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
   const now = new Date();
   const viewMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
   const monthDates = availableDates.filter(d => {
-    const dt = new Date(d.available_date);
+    const dt = new Date(d.available_date + "T00:00:00");
     return dt.getMonth() === viewMonth.getMonth() && dt.getFullYear() === viewMonth.getFullYear();
   });
 
@@ -3181,7 +3181,7 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {monthDates.map(d => {
-              const dt = new Date(d.available_date);
+              const dt = new Date(d.available_date + "T00:00:00");
               const isSelected = selectedDate?.available_date === d.available_date;
               return (
                 <button key={d.available_date} onClick={() => setSelectedDate(d)} style={{
@@ -3206,7 +3206,7 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
 
         {selectedDate && (
           <BlueBtn onClick={() => onConfirm(selectedDate)} style={{ marginTop: 20 }}>
-            {t.confirmDate} — {new Date(selectedDate.available_date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+            {t.confirmDate} — {new Date(selectedDate.available_date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </BlueBtn>
         )}
       </div>
@@ -3236,7 +3236,7 @@ function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo,
           <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
             <span style={{ color: "#64748b", fontWeight: 600, fontSize: 13 }}>{t.installDate}</span>
             <span style={{ color: C.navy, fontWeight: 900, fontSize: 13 }}>
-              {new Date(installDate).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+              {new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
             </span>
           </div>
         </div>
@@ -3433,7 +3433,7 @@ export default function App() {
       }
 
       if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
-        const formattedDate = installDate ? new Date(installDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+        const formattedDate = installDate ? new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
         const smsBody = lang === "es"
           ? `${brand.name}: Reserva confirmada! Ref: ${finalBookingRef}. Instalacion: ${formattedDate}. Le llamaremos pronto para confirmar detalles.`
           : `${brand.name}: Booking confirmed! Ref: ${finalBookingRef}. Install date: ${formattedDate}. We'll call soon to confirm details.`;
@@ -3758,6 +3758,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
