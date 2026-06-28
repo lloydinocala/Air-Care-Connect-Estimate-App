@@ -3124,7 +3124,10 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
       setLoading(true);
       try {
         const data = await sb.get("availability", "is_open=eq.true&order=available_date.asc");
-        setAvailableDates(data.filter(d => d.booked_slots < d.max_slots));
+        // Permanent rule: never show Sundays as bookable, even if one is accidentally
+        // marked open in the database. day 0 = Sunday in JS Date.
+        const noSundays = data.filter(d => new Date(d.available_date + "T00:00:00").getDay() !== 0);
+        setAvailableDates(noSundays.filter(d => d.booked_slots < d.max_slots));
       } catch(e) {
         console.error("Calendar load error:", e);
       }
@@ -3411,6 +3414,22 @@ export default function App() {
             htmlContent: confirmHtml,
           }),
         }).catch(e => console.error("Confirmation email error:", e));
+
+        // Also send the full detailed estimate (same template as "Email This Quote" on Screen 15)
+        // so the customer automatically has their complete system specs and pricing on file.
+        const monthly = Math.round(total / 60);
+        const detailedHtml = buildQuoteEmailHtml({
+          lang, brandName: brand.name, customerName: customerInfo?.name, address: property?.address,
+          eq: selectedEq, total, monthly, deposit: isFinancing ? null : Math.round(total * 0.5),
+        });
+        fetch("/api/send-email", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: customerInfo.email,
+            subject: lang === "es" ? `Su Cotización Detallada - ${brand.name}` : `Your Detailed Estimate - ${brand.name}`,
+            htmlContent: detailedHtml,
+          }),
+        }).catch(e => console.error("Detailed estimate email error:", e));
       }
 
       if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
@@ -3739,5 +3758,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
