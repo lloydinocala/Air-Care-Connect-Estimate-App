@@ -2340,7 +2340,7 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG,
 }
 
 // ── SCREEN 14: EQUIPMENT RESULTS ──────────────────────────────────────────────
-function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onCompareTiers, lang, savedOptions, onToggleSaved, onReviewSaved }) {
+function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onStartOver, onCompareTiers, lang, savedOptions, onToggleSaved, onReviewSaved }) {
   const [recommended, setRecommended] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sizeNote, setSizeNote] = useState(null);
@@ -2557,7 +2557,7 @@ function ReviewSavedOptions({ brand, t, lang, quote, savedOptions, onToggleSaved
 }
 
 // ── SCREEN 15: SYSTEM DETAIL / REVIEW ─────────────────────────────────────────
-function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG, onSave, lang }) {
+function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG, onSave, onStartOver, lang }) {
   const { adderTotal } = quote;
   const total = (selectedEq.installation_price || 0) + adderTotal;
   const deposit = total * 0.5;
