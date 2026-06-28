@@ -651,7 +651,9 @@ function HeroCard({ emoji, overlayText, children, imgSrc }) {
   );
 }
 
-function Shell({ children, t, brand, onCG, showBack, onBack, showSave, onSave }) {
+function Shell({ children, t, brand, onCG, showBack, onBack, showSave, onSave, onStartOver }) {
+  const [confirmingReset, setConfirmingReset] = useState(false);
+
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: FONT, maxWidth: 430, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", padding: "14px 20px 0" }}>
@@ -661,10 +663,32 @@ function Shell({ children, t, brand, onCG, showBack, onBack, showSave, onSave })
         <div style={{ flex: 1, textAlign: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 900, color: C.blue, letterSpacing: 2, textTransform: "uppercase" }}>{brand.name}</span>
         </div>
-        {showSave
-          ? <button onClick={onSave} style={{ background: "none", border: "none", color: C.blue, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: FONT }}>💾 Save</button>
-          : <div style={{ width: 36 }} />}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {showSave && <button onClick={onSave} style={{ background: "none", border: "none", color: C.blue, fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: FONT, whiteSpace: "nowrap" }}>💾 Save</button>}
+          {onStartOver && (
+            <button onClick={() => setConfirmingReset(true)} style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: FONT, whiteSpace: "nowrap" }}>
+              ↺ Start Over
+            </button>
+          )}
+        </div>
       </div>
+
+      {confirmingReset && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(22,62,100,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setConfirmingReset(false)}>
+          <div style={{ background: C.white, borderRadius: 20, padding: 24, maxWidth: 320, boxShadow: "10px 10px 30px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 36, textAlign: "center", marginBottom: 8 }}>↺</div>
+            <h3 style={{ fontSize: 16, fontWeight: 900, color: C.navy, textAlign: "center", margin: "0 0 8px" }}>Start Over?</h3>
+            <p style={{ fontSize: 13, color: "#64748b", textAlign: "center", marginBottom: 18, lineHeight: 1.5 }}>
+              This clears your current progress so you can begin a fresh estimate — useful if your needs have changed, or you'd like a new property address.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <WhiteBtn onClick={() => setConfirmingReset(false)} style={{ flex: 1, padding: "10px", fontSize: 13 }}>Cancel</WhiteBtn>
+              <BlueBtn onClick={() => { setConfirmingReset(false); onStartOver(); }} style={{ flex: 1, padding: "10px", fontSize: 13 }}>Start Over</BlueBtn>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>{children}</div>
       <div style={{ padding: "10px 20px 24px" }}><CGBar t={t} onClick={onCG} /></div>
     </div>
@@ -1363,7 +1387,7 @@ REGLAS:
 }
 
 // ── SCREEN 1: LANDING ─────────────────────────────────────────────────────────
-function S1_Landing({ brand, t, onStart, onCG, onSave }) {
+function S1_Landing({ brand, t, onStart, onCG, onSave, onStartOver }) {
   const [modal, setModal] = useState(false);
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: FONT, maxWidth: 430, margin: "0 auto" }}>
@@ -1424,7 +1448,7 @@ function loadGoogleMaps(callback) {
 }
 
 // ── SCREEN 2: ADDRESS ─────────────────────────────────────────────────────────
-function S2_Address({ brand, t, onFound, onBack, onCG, onSave }) {
+function S2_Address({ brand, t, onFound, onBack, onCG, onSave, onStartOver }) {
   const [addr, setAddr] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -1728,7 +1752,7 @@ const fetchPropertyData = async (address, lat, lng, apiKey) => {
 };
 
 // ── SCREEN 3: CONFIRM HOME ────────────────────────────────────────────────────
-function S3_ConfirmHome({ brand, t, lang, property, onConfirm, onEdit, onBack, onCG, onSave }) {
+function S3_ConfirmHome({ brand, t, lang, property, onConfirm, onEdit, onBack, onCG, onSave, onStartOver }) {
   const [propData, setPropData] = useState(property);
   const [loadingProp, setLoadingProp] = useState(true);
   const [streetViewError, setStreetViewError] = useState(false);
@@ -1970,7 +1994,7 @@ function S3_ConfirmHome({ brand, t, lang, property, onConfirm, onEdit, onBack, o
 }
 
 // ── SCREEN 4: INTENT ──────────────────────────────────────────────────────────
-function S4_Intent({ brand, t, onSelect, onBack, onCG, onSave }) {
+function S4_Intent({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   const opts = [
     { id: "replace", label: t.replaceMain, sub: t.replaceMainSub, blue: true },
     { id: "minisplit", label: t.addRoom, sub: t.addRoomSub, blue: false },
@@ -1996,7 +2020,7 @@ function S4_Intent({ brand, t, onSelect, onBack, onCG, onSave }) {
 }
 
 // ── SCREEN 5: COOLING ADEQUACY ────────────────────────────────────────────────
-function S5_CoolWell({ brand, t, onSelect, onBack, onCG, onSave }) {
+function S5_CoolWell({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   const opts = [
     { id: "yes", label: t.coolYes, blue: true },
     { id: "used_to", label: t.coolUsed, blue: false },
@@ -2004,7 +2028,7 @@ function S5_CoolWell({ brand, t, onSelect, onBack, onCG, onSave }) {
     { id: "unsure", label: t.coolNotSure, blue: false },
   ];
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.coolWell}</h1>
       </div>
@@ -2022,9 +2046,9 @@ function S5_CoolWell({ brand, t, onSelect, onBack, onCG, onSave }) {
 }
 
 // ── SCREEN 6: FLOOD ZONE ──────────────────────────────────────────────────────
-function S6_FloodZone({ brand, t, onSelect, onBack, onCG, onSave }) {
+function S6_FloodZone({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.floodZone}</h1>
       </div>
@@ -2040,9 +2064,9 @@ function S6_FloodZone({ brand, t, onSelect, onBack, onCG, onSave }) {
 }
 
 // ── SCREEN 7: SYSTEM AGE ──────────────────────────────────────────────────────
-function S7_SystemAge({ brand, t, onSelect, onBack, onCG, onSave }) {
+function S7_SystemAge({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 23, fontWeight: 900, color: C.navy, margin: 0 }}>{t.systemAge}</h1>
       </div>
@@ -2058,9 +2082,9 @@ function S7_SystemAge({ brand, t, onSelect, onBack, onCG, onSave }) {
 }
 
 // ── SCREEN 8: HOA ─────────────────────────────────────────────────────────────
-function S8_HOA({ brand, t, onSelect, onBack, onCG, onSave }) {
+function S8_HOA({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>{t.hoaTitle}</h1>
       </div>
@@ -2076,14 +2100,14 @@ function S8_HOA({ brand, t, onSelect, onBack, onCG, onSave }) {
 }
 
 // ── SCREEN 8b: INSTALL LOCATION (Ground/Attic/Rooftop) ────────────────────────
-function S8b_InstallLocation({ brand, t, lang, onSelect, onBack, onCG, onSave }) {
+function S8b_InstallLocation({ brand, t, lang, onSelect, onBack, onCG, onSave, onStartOver }) {
   const opts = [
     { id: "ground", label: lang === "es" ? "Nivel del Suelo" : "Ground Level", blue: true },
     { id: "attic", label: lang === "es" ? "Ático" : "Attic", blue: false },
     { id: "rooftop", label: lang === "es" ? "Azotea" : "Rooftop", blue: true },
   ];
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>
           {lang === "es" ? "¿Dónde se Instalará Su Sistema?" : "Where Will Your System Be Installed?"}
@@ -2104,14 +2128,14 @@ function S8b_InstallLocation({ brand, t, lang, onSelect, onBack, onCG, onSave })
 }
 
 // ── SCREEN 9: SYSTEM TYPE ─────────────────────────────────────────────────────
-function S9_SystemType({ brand, t, onSelect, onBack, onCG, onSave }) {
+function S9_SystemType({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   const opts = [
     { id: "electric", label: t.sysElectric, sub: t.sysElectricSub, blue: true },
     { id: "package", label: t.sysPackage, sub: t.sysPackageSub, blue: false },
     { id: "gas", label: t.sysGas, sub: t.sysGasSub, blue: true },
   ];
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>{t.systemTypeTitle}</h1>
       </div>
@@ -2199,7 +2223,7 @@ function S10_Preparing({ brand, t, onDone, quoteReady }) {
 }
 
 // ── SCREEN 11: ESTIMATE READY ─────────────────────────────────────────────────
-function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG, onSave }) {
+function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG, onSave, onStartOver }) {
   const { property, answers, adderTotal, allEquipment } = quote;
   const homeType = answers.detectedHomeType || property.type || "site-built";
   const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell, homeType);
@@ -2211,7 +2235,7 @@ function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG, onSave }) {
     : "Gas Furnace System";
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack={false} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack={false} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "16px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: 0 }}>{t.estimateReady}</h1>
       </div>
@@ -2244,7 +2268,7 @@ function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG, onSave }) {
 }
 
 // ── SCREEN 12: CHOOSE BRAND FAMILY ────────────────────────────────────────────
-function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG, onSave }) {
+function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG, onSave, onStartOver }) {
   const families = [
     { id: "Budget-Friendly", label: t.budgetFriendly, sub: t.budgetFriendlySub, blue: true },
     { id: "Commonly Purchased", label: t.commonlyPurchased, sub: t.commonlyPurchasedSub, blue: false },
@@ -2252,7 +2276,7 @@ function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG, onSave }) {
     { id: "Premium Products", label: t.premiumProducts, sub: t.premiumProductsSub, blue: false },
   ];
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseFamilyTitle}</h1>
       </div>
@@ -2270,7 +2294,7 @@ function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG, onSave }) {
 }
 
 // ── SCREEN 13: CHOOSE BRAND ───────────────────────────────────────────────────
-function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG, onSave }) {
+function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG, onSave, onStartOver }) {
   const [brands, setBrands] = useState([]);
   const [loading, setLoading] = useState(true);
   const { property, answers } = quote;
@@ -2293,7 +2317,7 @@ function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG,
   }, [brandFamily]);
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseBrandTitle}</h1>
         <p style={{ fontSize: 13, color: C.navy, fontWeight: 600, margin: "6px 0 0" }}>{t.chooseBrandDesc}</p>
@@ -2370,7 +2394,7 @@ function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, 
   );
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.recommendationTitle}</h1>
         <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{brandFamily} · {selectedBrand !== "recommended" ? selectedBrand : "All Brands"}</p>
@@ -2575,7 +2599,7 @@ function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG
   };
 
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.reviewTitle}</h1>
       </div>
@@ -2694,7 +2718,7 @@ function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG
 }
 
 // ── SCREEN 16: PERSONAL INFO ──────────────────────────────────────────────────
-function S16_PersonalInfo({ brand, t, onContinue, onBack, onCG, onSave }) {
+function S16_PersonalInfo({ brand, t, onContinue, onBack, onCG, onSave, onStartOver }) {
   const [form, setForm] = useState({ name: "", email: "", phone: "", contactPref: "both" });
   const valid = form.name && form.email && form.phone;
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -3309,6 +3333,16 @@ export default function App() {
     setSavedOptions(p => p.find(s => s.id === eq.id) ? p.filter(s => s.id !== eq.id) : [...p, eq]);
   };
 
+  // Fully clear everything and return to the landing screen - lets a customer
+  // genuinely escape a stale/abandoned session, even months later.
+  const handleStartOver = () => {
+    try { localStorage.removeItem("acc_progress"); } catch(e) {}
+    setScreen("s1"); setProperty(null); setAnswers({}); setQuote(null);
+    setBrandFamily(null); setSelectedBrand(null); setSelectedEq(null);
+    setCustomerInfo(null); setPaymentInfo(null); setBookingRef(null); setInstallDate(null);
+    setSavedOptions([]);
+  };
+
   // Called when payment succeeds (card/ACH) or financing application is initiated (FTL/Microf).
   // The install slot was already held when the customer picked their date on the Schedule screen,
   // so this step just finalizes the actual booking record with payment details.
@@ -3505,11 +3539,11 @@ export default function App() {
           onSaved={saveProgressNow} />
       )}
 
-      {screen === "s1" && <S1_Landing brand={brand} t={t} onStart={() => go("s2")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s1" && <S1_Landing brand={brand} t={t} onStart={() => go("s2")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s2" && <S2_Address brand={brand} t={t}
         onFound={p => { setProperty(p); go("s3"); }}
-        onBack={() => go("s1")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s1")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s3" && <S3_ConfirmHome brand={brand} t={t} lang={lang} property={property}
         onConfirm={(verified) => {
@@ -3530,7 +3564,7 @@ export default function App() {
           }
           go("s4");
         }}
-        onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s4" && <S4_Intent brand={brand} t={t}
         onSelect={id => {
@@ -3538,27 +3572,27 @@ export default function App() {
           if (id === "minisplit") { alert("Mini-split path — Phase 2"); return; }
           go("s5");
         }}
-        onBack={() => go("s3")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s3")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s5" && <S5_CoolWell brand={brand} t={t}
         onSelect={v => { ans("coolWell", v); go("s6"); }}
-        onBack={() => go("s4")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s4")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s6" && <S6_FloodZone brand={brand} t={t}
         onSelect={v => { ans("floodZone", v); go("s7"); }}
-        onBack={() => go("s5")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s5")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s7" && <S7_SystemAge brand={brand} t={t}
         onSelect={v => { ans("systemAge", v); go("s8"); }}
-        onBack={() => go("s6")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s6")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s8" && <S8_HOA brand={brand} t={t}
         onSelect={v => { ans("hoa", v); go("s8b"); }}
-        onBack={() => go("s7")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s7")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s8b" && <S8b_InstallLocation brand={brand} t={t} lang={lang}
         onSelect={v => { ans("installLocation", v); go("s9"); }}
-        onBack={() => go("s8")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s8")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s9" && <S9_SystemType brand={brand} t={t}
         onSelect={v => {
@@ -3567,15 +3601,15 @@ export default function App() {
           go("s10");
           buildQuote(property, newAnswers);
         }}
-        onBack={() => go("s8b")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s8b")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!quote} />}
 
       {screen === "s11" && quote && <S11_EstimateReady brand={brand} t={t} quote={quote}
         onChooseFamily={() => go("s12")}
-        onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
       {screen === "s11" && !quote && (
-        <Shell t={t} brand={brand} onCG={() => setShowCG(true)} showBack onBack={() => go("s9")}>
+        <Shell t={t} brand={brand} onCG={() => setShowCG(true)} onStartOver={handleStartOver} showBack onBack={() => go("s9")}>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
             <h2 style={{ fontWeight: 900, color: C.navy, marginBottom: 8 }}>We hit a snag</h2>
@@ -3587,33 +3621,33 @@ export default function App() {
 
       {screen === "s12" && <S12_BrandFamily brand={brand} t={t} quote={quote}
         onSelect={f => { setBrandFamily(f); go("s13"); }}
-        onBack={() => go("s11")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s11")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s13" && <S13_ChooseBrand brand={brand} t={t} quote={quote} brandFamily={brandFamily}
         onSelect={b => { setSelectedBrand(b); go("s14"); }}
-        onBack={() => go("s12")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s12")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote} lang={lang}
         brandFamily={brandFamily} selectedBrand={selectedBrand}
         savedOptions={savedOptions} onToggleSaved={toggleSavedOption} onReviewSaved={() => go("savedReview")}
         onSelect={eq => { setSelectedEq(eq); go("s15"); }}
         onCompareTiers={() => go("s12")}
-        onBack={() => go("s13")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s13")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "savedReview" && (
         <ReviewSavedOptions brand={brand} t={t} lang={lang} quote={quote}
           savedOptions={savedOptions} onToggleSaved={toggleSavedOption}
           onSelect={eq => { setSelectedEq(eq); go("s15"); }}
-          onBack={() => go("s14")} onCG={() => setShowCG(true)} />
+          onBack={() => go("s14")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} />
       )}
       {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote} lang={lang}
         selectedEq={selectedEq}
         onApprove={() => go("s16")}
-        onBack={() => go("s14")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s14")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s16" && <S16_PersonalInfo brand={brand} t={t}
         onContinue={info => { setCustomerInfo(info); go("schedule"); }}
-        onBack={() => go("s15")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s15")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "schedule" && (
         <CheckoutCalendar brand={brand} t={t} lang={lang} paymentInfo={paymentInfo}
@@ -3630,13 +3664,13 @@ export default function App() {
             } catch(e) { console.error("Slot hold error:", e); }
             go("checkout");
           }}
-          onBack={() => go("s16")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("s16")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "checkout" && selectedEq && quote && (
         <CheckoutPayment brand={brand} t={t} quote={quote} selectedEq={selectedEq} customerInfo={customerInfo}
           onSelectMethod={method => go(`pay_${method}`)}
-          onBack={() => go("schedule")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("schedule")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_card" && selectedEq && (
@@ -3644,14 +3678,14 @@ export default function App() {
           deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
           customerInfo={customerInfo}
           onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_ach" && selectedEq && (
         <CheckoutACH brand={brand} t={t}
           deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
           onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_ftl" && selectedEq && (
@@ -3659,7 +3693,7 @@ export default function App() {
           total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           customerInfo={customerInfo}
           onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "pay_microf" && selectedEq && (
@@ -3667,7 +3701,7 @@ export default function App() {
           total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
           customerInfo={customerInfo}
           onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
       )}
 
       {screen === "confirmation" && (
@@ -3682,3 +3716,4 @@ export default function App() {
     </div>
   );
 }
+
