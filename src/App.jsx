@@ -374,22 +374,51 @@ const QuoteEngine = {
   },
 
   // Calculate all price adders based on answers
-  calcAdders: (answers) => {
+  // Fetch live adder prices from Supabase (cached for the session to avoid repeat fetches)
+  _addersCache: null,
+  fetchAllAdders: async () => {
+    if (QuoteEngine._addersCache) return QuoteEngine._addersCache;
+    try {
+      const data = await sb.get("job_qualifiers", "active=eq.true&select=*");
+      const map = {};
+      (Array.isArray(data) ? data : []).forEach(a => { map[a.qualifier_key] = a; });
+      QuoteEngine._addersCache = map;
+      return map;
+    } catch(e) {
+      console.error("Failed to fetch adders:", e);
+      return {};
+    }
+  },
+
+  // Calculate which adders apply based on answers, using LIVE prices from Supabase.
+  // Business rules (which answer triggers which adder key) stay here in code,
+  // but the actual dollar amounts come from the database so Lloyd can edit them himself.
+  calcAdders: async (answers) => {
+    const adderMap = await QuoteEngine.fetchAllAdders();
     let total = 0;
     const applied = [];
 
-    if (answers.floodZone === "yes") { total += 500; applied.push("flood_zone"); }
-    if (answers.systemAge === "new") { total += 150; applied.push("system_age_new"); }
-    if (answers.systemAge === "old") { total += 750; applied.push("system_age_old"); }
-    if (answers.hoa === "yes") { total += 200; applied.push("hoa_approval"); }
-    if (answers.ahuStandCondition === "poor") { total += 300; applied.push("ahu_stand_rebuild"); }
-    if (answers.buildingFloor === "second") { total += 750; applied.push("second_floor_lineset"); }
-    if (answers.rooftopCrane) { total += 500; applied.push("rooftop_crane"); }
+    const apply = (key) => {
+      const a = adderMap[key];
+      if (a) { total += parseFloat(a.price_adder) || 0; applied.push({ key, label: a.qualifier_label, amount: parseFloat(a.price_adder) || 0, visible: a.customer_visible }); }
+    };
+
+    if (answers.floodZone === "yes") apply("flood_zone");
+    if (answers.systemAge === "new") apply("system_age_new");
+    if (answers.systemAge === "old") apply("system_age_old");
+    if (answers.hoa === "yes") apply("hoa_approval");
+    if (answers.ahuStandCondition === "poor") apply("ahu_stand_rebuild");
+    if (answers.buildingFloor === "second") apply("second_floor_lineset");
+    if (answers.rooftopCrane) apply("rooftop_crane");
+    if (answers.installLocation === "ground") apply("install_ground");
+    if (answers.installLocation === "attic") apply("install_attic");
+    if (answers.installLocation === "rooftop") apply("install_rooftop");
     if (answers.ductReplacement === "yes") {
-      if (answers.homeWidth === "single") { total += 1500; applied.push("duct_replacement_single"); }
-      if (answers.homeWidth === "double") { total += 2400; applied.push("duct_replacement_double"); }
-      if (answers.homeWidth === "triple") { total += 3200; applied.push("duct_replacement_triple"); }
+      if (answers.homeWidth === "single") apply("duct_replacement_single");
+      if (answers.homeWidth === "double") apply("duct_replacement_double");
+      if (answers.homeWidth === "triple") apply("duct_replacement_triple");
     }
+
     return { total, applied };
   },
 
@@ -2046,6 +2075,34 @@ function S8_HOA({ brand, t, onSelect, onBack, onCG, onSave }) {
   );
 }
 
+// ── SCREEN 8b: INSTALL LOCATION (Ground/Attic/Rooftop) ────────────────────────
+function S8b_InstallLocation({ brand, t, lang, onSelect, onBack, onCG, onSave }) {
+  const opts = [
+    { id: "ground", label: lang === "es" ? "Nivel del Suelo" : "Ground Level", blue: true },
+    { id: "attic", label: lang === "es" ? "Ático" : "Attic", blue: false },
+    { id: "rooftop", label: lang === "es" ? "Azotea" : "Rooftop", blue: true },
+  ];
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>
+          {lang === "es" ? "¿Dónde se Instalará Su Sistema?" : "Where Will Your System Be Installed?"}
+        </h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>
+          {lang === "es" ? "Esto nos ayuda a preparar el equipo y la mano de obra correctos." : "This helps us prepare the right equipment and labor for your install."}
+        </p>
+      </div>
+      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+        {opts.map(o => o.blue
+          ? <BlueBtn key={o.id} onClick={() => onSelect(o.id)}>{o.label}</BlueBtn>
+          : <WhiteBtn key={o.id} onClick={() => onSelect(o.id)}>{o.label}</WhiteBtn>
+        )}
+      </div>
+      <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
+    </Shell>
+  );
+}
+
 // ── SCREEN 9: SYSTEM TYPE ─────────────────────────────────────────────────────
 function S9_SystemType({ brand, t, onSelect, onBack, onCG, onSave }) {
   const opts = [
@@ -3408,7 +3465,7 @@ export default function App() {
   // Build quote object with adder calculation
   const buildQuote = useCallback(async (prop, curAnswers) => {
     try {
-      const { total: adderTotal } = QuoteEngine.calcAdders(curAnswers);
+      const { total: adderTotal } = await QuoteEngine.calcAdders(curAnswers);
       const homeType = curAnswers.detectedHomeType || prop.type || "site-built";
       const tons = QuoteEngine.calcTonnage(prop.sqft, curAnswers.coolWell, homeType);
       const systemTypes = QuoteEngine.getSystemTypes(curAnswers.systemType, null, homeType);
@@ -3496,8 +3553,12 @@ export default function App() {
         onBack={() => go("s6")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s8" && <S8_HOA brand={brand} t={t}
-        onSelect={v => { ans("hoa", v); go("s9"); }}
+        onSelect={v => { ans("hoa", v); go("s8b"); }}
         onBack={() => go("s7")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+
+      {screen === "s8b" && <S8b_InstallLocation brand={brand} t={t} lang={lang}
+        onSelect={v => { ans("installLocation", v); go("s9"); }}
+        onBack={() => go("s8")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s9" && <S9_SystemType brand={brand} t={t}
         onSelect={v => {
@@ -3506,7 +3567,7 @@ export default function App() {
           go("s10");
           buildQuote(property, newAnswers);
         }}
-        onBack={() => go("s8")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s8b")} onCG={() => setShowCG(true)} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!quote} />}
 
