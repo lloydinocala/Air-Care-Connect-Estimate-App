@@ -942,6 +942,27 @@ function buildConfirmationEmailHtml({ lang, brandName, customerName, bookingRef,
   const totalLabel = isEs ? "Precio Total" : "Total Price";
   const whatNextHeading = isEs ? "Qué Sigue" : "What Happens Next";
 
+  const deposit = total ? Math.round(total * 0.5) : 0;
+  const balance = total ? total - deposit : 0;
+
+  // Payment status messaging - this is the receipt/acknowledgment for what's already paid,
+  // and clear expectation-setting for what (if anything) is due on install day
+  let paymentStatusLabel, paymentStatusMessage;
+  if (isFinancing) {
+    paymentStatusLabel = isEs ? "Estado del Pago" : "Payment Status";
+    paymentStatusMessage = isEs
+      ? "Pendiente la aprobación de su financiamiento, no se requerirá pago el día de la instalación."
+      : "Pending your financing approval, no payment will be required at installation.";
+  } else if (total) {
+    paymentStatusLabel = isEs ? "Pago Recibido" : "Payment Received";
+    paymentStatusMessage = isEs
+      ? `Hemos recibido su depósito de $${deposit.toLocaleString()}. Por favor pague el saldo restante de $${balance.toLocaleString()} al técnico líder una vez que la instalación esté completa.`
+      : `We've received your deposit of $${deposit.toLocaleString()}. Please pay the remaining balance of $${balance.toLocaleString()} to the lead technician once installation is complete.`;
+  } else {
+    paymentStatusLabel = null;
+    paymentStatusMessage = null;
+  }
+
   const formattedDate = installDate
     ? new Date(installDate + "T00:00:00").toLocaleDateString(isEs ? "es-ES" : "en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
     : "";
@@ -1004,6 +1025,15 @@ function buildConfirmationEmailHtml({ lang, brandName, customerName, bookingRef,
             </table>
           </td></tr>
         </table>
+
+        ${paymentStatusMessage ? `
+        <table style="width:100%; background:${isFinancing ? "#fefce8" : "#f0fdf4"}; border:1px solid ${isFinancing ? "#fde68a" : "#86efac"}; border-radius:10px; margin-bottom: 18px;" cellpadding="0" cellspacing="0">
+          <tr><td style="padding:14px 16px;">
+            <div style="font-weight:800; font-size:13px; color:${isFinancing ? "#92400e" : "#166534"}; margin-bottom:5px;">${paymentStatusLabel}</div>
+            <div style="font-size:12px; color:${isFinancing ? "#78350f" : "#166534"}; line-height:1.5;">${paymentStatusMessage}</div>
+          </td></tr>
+        </table>
+        ` : ""}
 
         <div style="font-weight:900; font-size:14px; color:${navy}; margin-bottom: 10px;">${whatNextHeading}</div>
         <table style="width:100%; border-collapse:collapse; margin-bottom: 8px;">
@@ -3939,6 +3969,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
