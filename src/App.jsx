@@ -410,9 +410,7 @@ const QuoteEngine = {
     if (answers.ahuStandCondition === "poor") apply("ahu_stand_rebuild");
     if (answers.buildingFloor === "second") apply("second_floor_lineset");
     if (answers.rooftopCrane) apply("rooftop_crane");
-    if (answers.installLocation === "ground") apply("install_ground");
-    if (answers.installLocation === "attic") apply("install_attic");
-    if (answers.installLocation === "rooftop") apply("install_rooftop");
+    if (answers.installLocation) apply(`install_${answers.installLocation}`);
     if (answers.ductReplacement === "yes") {
       if (answers.homeWidth === "single") apply("duct_replacement_single");
       if (answers.homeWidth === "double") apply("duct_replacement_double");
@@ -2099,13 +2097,20 @@ function S8_HOA({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   );
 }
 
-// ── SCREEN 8b: INSTALL LOCATION (Ground/Attic/Rooftop) ────────────────────────
-function S8b_InstallLocation({ brand, t, lang, onSelect, onBack, onCG, onSave, onStartOver }) {
-  const opts = [
-    { id: "ground", label: lang === "es" ? "Nivel del Suelo" : "Ground Level", blue: true },
-    { id: "attic", label: lang === "es" ? "Ático" : "Attic", blue: false },
-    { id: "rooftop", label: lang === "es" ? "Azotea" : "Rooftop", blue: true },
+// ── SCREEN 8b: INSTALL LOCATION (Air Handler + Condenser combinations) ────────
+function S8b_InstallLocation({ brand, t, lang, systemType, onSelect, onBack, onCG, onSave, onStartOver }) {
+  const isEs = lang === "es";
+  const isPackage = systemType === "package";
+
+  const splitOpts = [
+    { id: "ah_attic_cond_ground", ah: isEs ? "Ático" : "Attic", cond: isEs ? "Suelo" : "Ground", blue: true },
+    { id: "ah_attic_cond_rooftop", ah: isEs ? "Ático" : "Attic", cond: isEs ? "Azotea" : "Rooftop", blue: false },
+    { id: "ah_ceiling_cond_ground", ah: isEs ? "Techo Interior" : "Ceiling", cond: isEs ? "Suelo" : "Ground", blue: true },
+    { id: "ah_ceiling_cond_rooftop", ah: isEs ? "Techo Interior" : "Ceiling", cond: isEs ? "Azotea" : "Rooftop", blue: false },
+    { id: "ah_ground_cond_ground", ah: isEs ? "Nivel del Suelo" : "Ground Level", cond: isEs ? "Suelo" : "Ground", blue: true },
+    { id: "ah_ground_cond_rooftop", ah: isEs ? "Nivel del Suelo" : "Ground Level", cond: isEs ? "Azotea" : "Rooftop", blue: false },
   ];
+
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
@@ -2113,13 +2118,24 @@ function S8b_InstallLocation({ brand, t, lang, onSelect, onBack, onCG, onSave, o
           {lang === "es" ? "¿Dónde se Instalará Su Sistema?" : "Where Will Your System Be Installed?"}
         </h1>
         <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>
-          {lang === "es" ? "Esto nos ayuda a preparar el equipo y la mano de obra correctos." : "This helps us prepare the right equipment and labor for your install."}
+          {isPackage
+            ? (lang === "es" ? "Confirme la ubicación de su unidad de paquete." : "Confirm the location of your package unit.")
+            : (lang === "es" ? "Elija dónde irá la unidad interior (manejador de aire) y la unidad exterior (condensador)." : "Choose where your indoor unit (air handler) and outdoor unit (condenser) will go.")}
         </p>
       </div>
+
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
-        {opts.map(o => o.blue
-          ? <BlueBtn key={o.id} onClick={() => onSelect(o.id)}>{o.label}</BlueBtn>
-          : <WhiteBtn key={o.id} onClick={() => onSelect(o.id)}>{o.label}</WhiteBtn>
+        {isPackage ? (
+          <BlueBtn onClick={() => onSelect("package_ground")}>
+            {lang === "es" ? "Unidad de Paquete - Nivel del Suelo" : "Package Unit - Ground Level"}
+          </BlueBtn>
+        ) : (
+          splitOpts.map(o => {
+            const label = `${lang === "es" ? "Interior" : "Indoor"}: ${o.ah}  +  ${lang === "es" ? "Exterior" : "Outdoor"}: ${o.cond}`;
+            return o.blue
+              ? <BlueBtn key={o.id} onClick={() => onSelect(o.id)}>{label}</BlueBtn>
+              : <WhiteBtn key={o.id} onClick={() => onSelect(o.id)}>{label}</WhiteBtn>;
+          })
         )}
       </div>
       <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
@@ -3590,18 +3606,25 @@ export default function App() {
         onSelect={v => { ans("hoa", v); go("s8b"); }}
         onBack={() => go("s7")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
-      {screen === "s8b" && <S8b_InstallLocation brand={brand} t={t} lang={lang}
-        onSelect={v => { ans("installLocation", v); go("s9"); }}
-        onBack={() => go("s8")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s8" && <S8_HOA brand={brand} t={t}
+        onSelect={v => { ans("hoa", v); go("s9"); }}
+        onBack={() => go("s7")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s9" && <S9_SystemType brand={brand} t={t}
         onSelect={v => {
-          const newAnswers = { ...answers, systemType: v };
+          ans("systemType", v);
+          go("s8b");
+        }}
+        onBack={() => go("s8")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+
+      {screen === "s8b" && <S8b_InstallLocation brand={brand} t={t} lang={lang} systemType={answers.systemType}
+        onSelect={v => {
+          const newAnswers = { ...answers, installLocation: v };
           setAnswers(newAnswers);
           go("s10");
           buildQuote(property, newAnswers);
         }}
-        onBack={() => go("s8b")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s9")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
 
       {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!quote} />}
 
@@ -3716,4 +3739,5 @@ export default function App() {
     </div>
   );
 }
+
 
