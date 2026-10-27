@@ -79,7 +79,7 @@ const T = {
     chooseFamilyDesc: "Choose the Brand Family you would like to compare first. You can review other groups later.",
     budgetFriendly: "Budget-Friendly", budgetFriendlySub: "Reliable options designed to keep replacement costs practical.",
     commonlyPurchased: "Commonly Purchased", commonlyPurchasedSub: "Commonly selected brands with a strong balance of price, features, and availability.",
-    trending: "Trending in 2026", trendingSub: "CrossOver side-discharge systems — the most efficient and innovative option available.",
+    trending: "Trending in 2026", trendingSub: "Side-discharge systems — higher efficiency, quieter, and slimmer.",
     premiumProducts: "Premium Products", premiumProductsSub: "Higher-end brand options with stronger features, efficiency choices, or warranty support.",
     chooseBrandTitle: "Choose Your Brand",
     chooseBrandDesc: "These brands are available in the group you selected. Choose the one you would like to see first.",
@@ -223,7 +223,7 @@ const T = {
     chooseFamilyDesc: "Elija la Familia de Marca que desea comparar primero. Puede revisar otros grupos después.",
     budgetFriendly: "Económico", budgetFriendlySub: "Opciones confiables para mantener los costos de reemplazo prácticos.",
     commonlyPurchased: "Más Comprados", commonlyPurchasedSub: "Marcas comúnmente seleccionadas con un buen balance de precio y características.",
-    trending: "Tendencia en 2026", trendingSub: "Sistemas CrossOver de descarga lateral — la opción más eficiente disponible.",
+    trending: "Tendencia en 2026", trendingSub: "Sistemas de descarga lateral — más eficientes, silenciosos y compactos.",
     premiumProducts: "Productos Premium", premiumProductsSub: "Opciones de marca de alta gama con mejores características y garantía.",
     chooseBrandTitle: "Elija Su Marca",
     chooseBrandDesc: "Estas marcas están disponibles en el grupo seleccionado.",
@@ -335,44 +335,6 @@ const sb = {
 
 // ── QUOTING ENGINE ────────────────────────────────────────────────────────────
 const QuoteEngine = {
-  // Calculate tonnage from square footage
-  // Site-built: 650 sqft/ton, Manufactured: 500 sqft/ton
-  // Round UP to nearest 0.5 ton
-  calcTonnage: (sqft, coolWell, homeType) => {
-    const isManufactured = homeType && 
-      (homeType.toLowerCase().includes("manufactured") || 
-       homeType.toLowerCase().includes("mobile"));
-    const divisor = isManufactured ? 500 : 650;
-    const raw = sqft / divisor;
-    // CEILING to nearest 0.5 ton
-    const rounded = Math.ceil(raw * 2) / 2;
-    // If system always struggled, upsize by 0.5 ton
-    if (coolWell === "struggled") {
-      return Math.ceil((rounded + 0.5) * 2) / 2;
-    }
-    return rounded;
-  },
-
-  // Round up to whole ton for CrossOver systems
-  crossoverTonnage: (tons) => Math.ceil(tons),
-
-  // Map system type answer to DB system_type values
-  getSystemTypes: (sysAnswer, brandFamily, homeType) => {
-    const isApt = homeType && 
-      (homeType.toLowerCase().includes("condo") || 
-       homeType.toLowerCase().includes("apartment") ||
-       homeType.toLowerCase().includes("multi"));
-
-    if (sysAnswer === "electric") {
-      if (brandFamily === "Trending in 2026") return ["CrossOver"];
-      if (isApt) return ["Apt Split"];
-      return ["Split"];
-    }
-    if (sysAnswer === "package") return ["Packaged"];
-    if (sysAnswer === "gas") return ["Gas"];
-    return ["Split"];
-  },
-
   // Calculate all price adders based on answers
   // Fetch live adder prices from Supabase (cached for the session to avoid repeat fetches)
   _addersCache: null,
@@ -420,70 +382,6 @@ const QuoteEngine = {
     return { total, applied };
   },
 
-  // Fetch equipment from Supabase
-  fetchEquipment: async (systemType, tons, brandFamily, recommended = false, homeType = null) => {
-    // Handle CrossOver rounding
-    const queryTons = ["CrossOver", "Apt CrossOver"].includes(systemType)
-      ? QuoteEngine.crossoverTonnage(tons)
-      : tons;
-
-    let params = `system_type=eq.${encodeURIComponent(systemType)}&size_tons=eq.${queryTons}&active=eq.true&order=seer2.asc`;
-    if (brandFamily) params += `&brand_family=eq.${encodeURIComponent(brandFamily)}`;
-    if (recommended) params += `&recommended=eq.true`;
-
-    // Filter by home type if provided
-    if (homeType) {
-      const isManufactured = homeType.toLowerCase().includes("manufactured") || 
-                             homeType.toLowerCase().includes("mobile");
-      if (isManufactured) {
-        params += `&home_type=in.(Manufactured Home,Both)`;
-      } else {
-        params += `&home_type=in.(Site-Built,Both)`;
-      }
-    }
-
-    return sb.get("equipment", params);
-  },
-
-  // Get unique brands for a system type + brand family
-  fetchBrands: async (systemType, tons, brandFamily) => {
-    const equipment = await QuoteEngine.fetchEquipment(systemType, tons, brandFamily);
-    const brands = [...new Set(equipment.map(e => e.outdoor_brand))].filter(Boolean);
-    return brands;
-  },
-
-  // All standard tonnage sizes in order, for stepping up when exact size unavailable
-  TONNAGE_LADDER: [1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
-
-  // All brand families in price order, for stepping between tiers
-  BRAND_FAMILY_ORDER: ["Budget-Friendly", "Commonly Purchased", "Trending in 2026", "Premium Products"],
-
-  // Find the best available system for a brand, stepping UP in size if exact tonnage is unavailable.
-  // Never steps down — undersizing an AC system is never acceptable.
-  // Returns { equipment: [...], actualTons, sizeAdjusted: bool }
-  fetchEquipmentWithSizeFallback: async (systemType, requestedTons, brandFamily, homeType, selectedBrand) => {
-    const ladder = QuoteEngine.TONNAGE_LADDER.filter(t => t >= requestedTons);
-    for (const tons of ladder) {
-      let results = await QuoteEngine.fetchEquipment(systemType, tons, brandFamily, false, homeType);
-      if (selectedBrand && selectedBrand !== "recommended") {
-        results = results.filter(e => e.outdoor_brand === selectedBrand);
-      }
-      if (results.length > 0) {
-        return { equipment: results, actualTons: tons, sizeAdjusted: tons !== requestedTons };
-      }
-    }
-    return { equipment: [], actualTons: requestedTons, sizeAdjusted: false };
-  },
-
-  // Get price range for a system type + tonnage
-  getPriceRange: (equipment, adderTotal) => {
-    if (!equipment.length) return { min: 0, max: 0 };
-    const prices = equipment.map(e => (e.installation_price || 0) + adderTotal);
-    return {
-      min: Math.min(...prices),
-      max: Math.max(...prices),
-    };
-  },
 };
 
 // ── STRIPE.JS LOADER ──────────────────────────────────────────────────────────
@@ -776,7 +674,7 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
 // ── SHARED EMAIL TEMPLATE ──────────────────────────────────────────────────────
 // Builds a polished, branded HTML quote email used by both Comfort Guide
 // and the Screen 15 "Email This Quote" button — single source of truth.
-function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total, monthly, deposit }) {
+function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total, monthly, deposit, lines, warranties, rooftop }) {
   const isEs = lang === "es";
   const accent = "#00B0F0";
   const navy = "#163E64";
@@ -801,8 +699,10 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
     ? ["Sistema Mostrado", "Plataforma de Concreto", "Líneas de Refrigerante de Cobre Nuevas", "Clips de Huracán", "Interruptor Flotante", "Luz UV", "Bastidor de Filtro 2\"", "Mano de Obra", "Permisos", "Retiro del Sistema Antiguo"]
     : ["Displayed System", "Concrete Pad", "New Copper Refrigerant Lines", "Hurricane Clips to Secure Unit", "Float Switch to Prevent Drain Backups", "UV Light", "2\" Filter Rack", "Labor", "Permits", "Old System Haul-Away"];
 
-  // Build full spec rows matching every field shown on the Review Your System Details screen
-  const specRows = eq ? [
+  // When the caller passes the quote's own lines (from the pricebook + "Installation includes"),
+  // the email shows exactly what the customer saw on screen.
+  const useLines = Array.isArray(lines) && lines.length > 0;
+  const specRows = eq && !useLines ? [
     [isEs ? "Marca y Serie" : "Brand & Series", `${eq.outdoor_brand || ""} ${eq.outdoor_series || ""}`.trim()],
     eq.ahri_ref ? [isEs ? "Referencia AHRI" : "AHRI Reference", eq.ahri_ref] : null,
     eq.outdoor_model ? [isEs ? "Unidad Exterior" : "Outdoor Unit", eq.outdoor_model] : null,
@@ -843,7 +743,7 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
   ` : "";
 
   // Installation includes list
-  const installItemsHtml = installItems.map(item => `
+  const installItemsHtml = (useLines ? lines.slice(1) : installItems).map(item => `
     <tr><td style="padding:3px 0; font-size:12px; color:${navy}; font-weight:600;">✓ ${item}</td></tr>
   `).join("");
 
@@ -888,16 +788,20 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
 
         ${qualityPledgeBlock}
 
-        <!-- Parts warranty -->
-        <table style="width:100%; background:${navy}; border-radius:12px; margin-bottom: 16px;" cellpadding="0" cellspacing="0">
+        ${useLines ? `<div style="font-weight:900; font-size:15px; color:${navy}; margin-bottom: 10px;">${(eq && (eq.brandName || eq.outdoor_brand)) || ""} — ${lines[0]}</div>` : ""}
+
+        <!-- Warranty -->
+        ${(useLines && warranties && warranties.length ? warranties : [null]).map(w => `
+        <table style="width:100%; background:${navy}; border-radius:12px; margin-bottom: 10px;" cellpadding="0" cellspacing="0">
           <tr><td style="padding:12px 16px;">
-            <div style="color:#ffffff; font-weight:800; font-size:13px;">${partsWarrantyText}</div>
-            <div style="color:#cbd5e1; font-size:11px; margin-top:2px;">${partsWarrantyNote}</div>
+            <div style="color:#ffffff; font-weight:800; font-size:13px;">${w || partsWarrantyText}</div>
+            ${w ? "" : `<div style="color:#cbd5e1; font-size:11px; margin-top:2px;">${partsWarrantyNote}</div>`}
           </td></tr>
-        </table>
+        </table>`).join("")}
+        ${rooftop ? `<table style="width:100%; background:#fefce8; border:1px solid #fde68a; border-radius:10px; margin-bottom: 14px;" cellpadding="0" cellspacing="0"><tr><td style="padding:10px 14px; font-size:12px; color:#854d0e; font-weight:700;">${isEs ? "Las instalaciones en azotea pueden añadir $800–$2,000 por grúa/maniobras. Confirmaremos el monto exacto con usted para su aprobación antes de la entrega." : "Rooftop installs may add $800–$2,000 for crane/rigging. We'll confirm the exact amount with you for approval before delivery."}</td></tr></table>` : ""}
 
         ${eq ? `
-        <div style="font-weight:900; font-size:14px; color:${navy}; margin-bottom: 8px;">${includesHeading}</div>
+        <div style="font-weight:900; font-size:14px; color:${navy}; margin-bottom: 8px;">${useLines ? (isEs ? "Lo Que Incluye" : "What's Included") : includesHeading}</div>
         <table style="width:100%; border-collapse:collapse; margin-bottom: 18px;">
           ${installItemsHtml}
         </table>
@@ -1292,7 +1196,7 @@ KEY FACTS ABOUT AIR-CARE CONNECT:
 - No after-hours or weekend surcharges, ever
 - A 50% deposit is required to schedule installation — EXCEPT when financing through FTL or Microf, where no deposit is needed today
 - Payment options: Credit/debit card (instant, via Stripe), ACH bank transfer (no card fees, 1-3 day verification), FTL financing (traditional credit-based loan, customer owns the system immediately), Microf lease-to-own (flexible approval, doesn't require great credit, customer leases then owns later)
-- Brand families: Budget-Friendly (practical, reliable), Commonly Purchased (best balance of price/features), Trending in 2026 (CrossOver side-discharge systems — currently our most efficient and innovative option), Premium Products (top-tier efficiency and features)
+- Brand families: Budget-Friendly (practical, reliable), Commonly Purchased (best balance of price/features), Trending This Year (side-discharge systems — currently our most efficient and innovative option), Premium Products (top-tier efficiency and features)
 - The customer never has to talk to a salesperson or schedule an in-home visit just to get a real, guaranteed price
 
 HOW TO HANDLE HESITATION AND OBJECTIONS (use genuinely, never as a manipulative script):
@@ -2220,52 +2124,6 @@ function S8_HOA({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   );
 }
 
-// ── SCREEN 8b: INSTALL LOCATION (Air Handler + Condenser combinations) ────────
-function S8b_InstallLocation({ brand, t, lang, systemType, onSelect, onBack, onCG, onSave, onStartOver }) {
-  const isEs = lang === "es";
-  const isPackage = systemType === "package";
-
-  const splitOpts = [
-    { id: "ah_attic_cond_ground", ah: isEs ? "Ático" : "Attic", cond: isEs ? "Suelo" : "Ground", blue: true },
-    { id: "ah_attic_cond_rooftop", ah: isEs ? "Ático" : "Attic", cond: isEs ? "Azotea" : "Rooftop", blue: false },
-    { id: "ah_ceiling_cond_ground", ah: isEs ? "Techo Interior" : "Ceiling", cond: isEs ? "Suelo" : "Ground", blue: true },
-    { id: "ah_ceiling_cond_rooftop", ah: isEs ? "Techo Interior" : "Ceiling", cond: isEs ? "Azotea" : "Rooftop", blue: false },
-    { id: "ah_ground_cond_ground", ah: isEs ? "Nivel del Suelo" : "Ground Level", cond: isEs ? "Suelo" : "Ground", blue: true },
-    { id: "ah_ground_cond_rooftop", ah: isEs ? "Nivel del Suelo" : "Ground Level", cond: isEs ? "Azotea" : "Rooftop", blue: false },
-  ];
-
-  return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
-      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>
-          {lang === "es" ? "¿Dónde se Instalará Su Sistema?" : "Where Will Your System Be Installed?"}
-        </h1>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>
-          {isPackage
-            ? (lang === "es" ? "Confirme la ubicación de su unidad de paquete." : "Confirm the location of your package unit.")
-            : (lang === "es" ? "Elija dónde irá la unidad interior (manejador de aire) y la unidad exterior (condensador)." : "Choose where your indoor unit (air handler) and outdoor unit (condenser) will go.")}
-        </p>
-      </div>
-
-      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
-        {isPackage ? (
-          <BlueBtn onClick={() => onSelect("package_ground")}>
-            {lang === "es" ? "Unidad de Paquete - Nivel del Suelo" : "Package Unit - Ground Level"}
-          </BlueBtn>
-        ) : (
-          splitOpts.map(o => {
-            const label = `${lang === "es" ? "Interior" : "Indoor"}: ${o.ah}  +  ${lang === "es" ? "Exterior" : "Outdoor"}: ${o.cond}`;
-            return o.blue
-              ? <BlueBtn key={o.id} onClick={() => onSelect(o.id)}>{label}</BlueBtn>
-              : <WhiteBtn key={o.id} onClick={() => onSelect(o.id)}>{label}</WhiteBtn>;
-          })
-        )}
-      </div>
-      <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
-    </Shell>
-  );
-}
-
 // ── SCREEN 9: SYSTEM TYPE ─────────────────────────────────────────────────────
 function S9_SystemType({ brand, t, onSelect, onBack, onCG, onSave, onStartOver }) {
   const opts = [
@@ -2361,500 +2219,878 @@ function S10_Preparing({ brand, t, onDone, quoteReady }) {
   );
 }
 
-// ── SCREEN 11: ESTIMATE READY ─────────────────────────────────────────────────
-function S11_EstimateReady({ brand, t, quote, onChooseFamily, onCG, onSave, onStartOver }) {
-  const { property, answers, adderTotal, allEquipment } = quote;
-  const homeType = answers.detectedHomeType || property.type || "site-built";
-  const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell, homeType);
-  const priceRange = QuoteEngine.getPriceRange(allEquipment, adderTotal);
-  const isManufactured = homeType.toLowerCase().includes("manufactured") || homeType.toLowerCase().includes("mobile");
-  const sysLabel = answers.systemType === "electric" 
-    ? (isManufactured ? "Package Unit" : "Split Heat Pump")
-    : answers.systemType === "package" ? "Package Unit" 
-    : "Gas Furnace System";
+// ═════════════════════════════════════════════════════════════════════════════
+// SYSTEM CATALOG — read live from the contractor's Journey Systems Pricebook.
+// One source of truth: prices, brand groups, favorites (Recommended) and the
+// Best Value ribbon are all edited in Journey. Systems without a real price are
+// never returned, so a brand appears here the moment it is priced in Journey.
+// ═════════════════════════════════════════════════════════════════════════════
+const CATALOG_URL = "https://gatndtsmjrxdgxquvydw.supabase.co/functions/v1/estimate-catalog";
 
+const L = (lang, en, es) => (lang === "es" ? es : en);
+
+const FAMILY_KEYS = ["budget", "common", "trending", "premium"];
+const famKey = (f) => {
+  const s = String(f || "").toLowerCase();
+  if (s.includes("budget")) return "budget";
+  if (s.includes("common")) return "common";
+  if (s.includes("trend")) return "trending";
+  if (s.includes("premium")) return "premium";
+  return null;
+};
+// "AMERICAN STANDARD" → "American Standard", "GE (LENNOX)" → "GE (Lennox)"
+const brandDisplay = (b) => String(b || "").trim().split(/(\s+|\(|\))/).map(w =>
+  !w.trim() || w === "(" || w === ")" ? w : w.length <= 2 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()
+).join("");
+const brandKey = (b) => String(b || "").trim().toUpperCase();
+
+const Catalog = {
+  _p: null,
+  load() {
+    if (!this._p) {
+      this._p = fetch(CATALOG_URL)
+        .then(r => { if (!r.ok) throw new Error("catalog " + r.status); return r.json(); })
+        .then(d => ({
+          ...d,
+          systems: (d.systems || []).map(s => ({
+            ...s,
+            size_tons: Number(s.size_tons),
+            seer2: s.seer2 == null ? null : Number(s.seer2),
+            installation_price: Number(s.installation_price),
+            brandKey: brandKey(s.outdoor_brand),
+            brandName: brandDisplay(s.outdoor_brand),
+            fam: famKey(s.brand_family),
+          })),
+        }))
+        .catch(e => { this._p = null; throw e; });
+    }
+    return this._p;
+  },
+};
+
+// Business rules that turn the customer's answers into pricebook rows.
+const Plan = {
+  isApt: (homeKind) => homeKind === "apt",
+  dbTypes(sysAnswer, homeKind, fam) {
+    const apt = homeKind === "apt";
+    if (sysAnswer === "electric") {
+      if (fam === "trending") return [apt ? "Apt Side-Discharge" : "Side-Discharge"];
+      if (fam) return [apt ? "Apt Split" : "Split"];
+      return apt ? ["Apt Split", "Apt Side-Discharge"] : ["Split", "Side-Discharge"];
+    }
+    if (sysAnswer === "package") return ["Packaged"];
+    if (sysAnswer === "gas") return ["Gas"];
+    return ["Split"];
+  },
+  families: (sysAnswer) => (sysAnswer === "electric" ? FAMILY_KEYS : ["budget", "common", "premium"]),
+  homeOk(row, homeKind) {
+    const h = String(row.home_type || "Both").toLowerCase();
+    if (h.includes("both")) return true;
+    const manufOnly = h.includes("manufactured") || h.includes("mobile");
+    return manufOnly ? homeKind === "mobile" : homeKind !== "mobile";
+  },
+  rows(systems, { sysAnswer, homeKind, fam }) {
+    const types = Plan.dbTypes(sysAnswer, homeKind, fam);
+    return systems.filter(r => types.includes(r.system_type) && (!fam || r.fam === fam) && Plan.homeOk(r, homeKind));
+  },
+  // Never undersize: use the requested size, or the next size up that this lineup offers.
+  // Side-discharge systems come in whole tons.
+  sized(rows, tons) {
+    const target = (r) => (String(r.system_type).includes("Side-Discharge") ? Math.ceil(tons) : tons);
+    const ok = rows.filter(r => r.size_tons >= target(r) - 0.001);
+    if (!ok.length) return { size: null, rows: [] };
+    const size = Math.min(...ok.map(r => r.size_tons));
+    return { size, rows: ok.filter(r => r.size_tons === size) };
+  },
+  // Brands offered in one family, each with its rows at the right size.
+  brands(systems, ctx, tons) {
+    const fam = Plan.rows(systems, ctx);
+    const byBrand = new Map();
+    for (const r of fam) {
+      const b = byBrand.get(r.brandKey) || { key: r.brandKey, name: r.brandName, fav: false, bestValue: false, all: [] };
+      b.all.push(r);
+      if (r.recommended) b.fav = true;
+      if (r.best_value) b.bestValue = true;
+      byBrand.set(r.brandKey, b);
+    }
+    const out = [];
+    for (const b of byBrand.values()) {
+      const { size, rows } = Plan.sized(b.all, tons);
+      if (!rows.length) continue;
+      out.push({ ...b, size, rows });
+    }
+    return out.sort((a, b) => (b.fav - a.fav) || (b.bestValue - a.bestValue) || a.name.localeCompare(b.name));
+  },
+  // One button per efficiency level (lowest price at each SEER2).
+  seerLevels(rows) {
+    const m = new Map();
+    for (const r of rows) {
+      const k = r.seer2 ?? 0;
+      if (!m.has(k) || r.installation_price < m.get(k).installation_price) m.set(k, r);
+    }
+    return [...m.values()].sort((a, b) => (a.seer2 || 0) - (b.seer2 || 0));
+  },
+  typeLabel(row, lang) {
+    const t = String(row?.system_type || "");
+    if (t.includes("Side-Discharge")) return L(lang, "Side-Discharge Heat Pump", "Bomba de Calor de Descarga Lateral");
+    if (t === "Packaged") return L(lang, "Package Unit", "Unidad de Paquete");
+    if (t === "Gas") return L(lang, "Gas Furnace System", "Sistema de Calefacción a Gas");
+    return L(lang, "Split System Heat Pump", "Bomba de Calor Dividida");
+  },
+  groupSubtitle(sysAnswer, fam, lang) {
+    if (sysAnswer === "package") return L(lang, "Packaged Units", "Unidades de Paquete");
+    if (sysAnswer === "gas") return L(lang, "Gas Furnace Systems", "Sistemas de Calefacción a Gas");
+    if (fam === "trending") return L(lang, "Side-Discharge Heat Pumps", "Bombas de Calor de Descarga Lateral");
+    return L(lang, "Split System Heat Pumps", "Bombas de Calor Divididas");
+  },
+  familyLabel(fam, lang) {
+    const y = new Date().getFullYear();
+    return {
+      budget: L(lang, "Budget-Friendly", "Económicas"),
+      common: L(lang, "Commonly Purchased", "Más Compradas"),
+      trending: L(lang, `Trending in ${y}`, `Tendencia en ${y}`),
+      premium: L(lang, "Premium Products", "Productos Premium"),
+    }[fam];
+  },
+  familyHeading(fam, lang) {
+    return {
+      budget: L(lang, "BUDGET-MINDED", "ECONÓMICAS"),
+      common: L(lang, "COMMONLY PURCHASED", "MÁS COMPRADAS"),
+      trending: L(lang, "TRENDING THIS YEAR", "TENDENCIA ESTE AÑO"),
+      premium: L(lang, "PREMIUM BRANDS", "MARCAS PREMIUM"),
+    }[fam];
+  },
+  familySub(fam, lang) {
+    return {
+      budget: L(lang, "Reliable options designed to keep replacement costs practical.", "Opciones confiables para mantener el costo de reemplazo práctico."),
+      common: L(lang, "Commonly selected brands with a strong balance of price, features, and availability.", "Marcas comúnmente elegidas con un buen balance de precio, funciones y disponibilidad."),
+      trending: L(lang, "Side-discharge systems — higher efficiency, quieter, and slimmer.", "Sistemas de descarga lateral — más eficientes, silenciosos y compactos."),
+      premium: L(lang, "Higher-end brand options with stronger features, efficiency choices, or warranty support.", "Marcas de gama alta con mejores funciones, eficiencia o respaldo de garantía."),
+    }[fam];
+  },
+  tons(property, answers) {
+    const sqft = Number(property?.sqft) || 0;
+    const divisor = answers.homeKind === "mobile" ? 500 : 650;
+    let t = Math.max(1.5, Math.ceil((sqft / divisor) * 2) / 2);
+    if (answers.coolWell === "struggled") t = Math.ceil((t + 0.5) * 2) / 2;
+    return t;
+  },
+  isRooftop: (loc) => String(loc || "").includes("rooftop"),
+};
+
+const quoteTotal = (eq, quote) => Math.round((Number(eq?.installation_price) || 0) + (Number(quote?.adderTotal) || 0));
+const money = (n) => "$" + Math.round(Number(n) || 0).toLocaleString();
+const guaranteeDate = (lang) => {
+  const d = new Date(); d.setDate(d.getDate() + 45);
+  return d.toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "long", day: "numeric", year: "numeric" });
+};
+
+// Equipment-specific lines first, then the contractor's "Installation includes" block for
+// this system type (Journey → System Estimate Setup), then warranties.
+function quoteLines(eq, catalog, lang) {
+  if (!eq) return [];
+  const t = String(eq.system_type || "");
+  const lines = [];
+  const isPkg = t === "Packaged", isGas = t === "Gas";
+  lines.push(`${eq.size_tons} ${L(lang, "Ton", "Ton.")}, ${eq.seer2} SEER2 ${Plan.typeLabel(eq, lang)}`);
+  if (eq.ahri_ref) lines.push(`AHRI # ${eq.ahri_ref}`);
+  if (isPkg) {
+    if (eq.outdoor_model) lines.push(`${L(lang, "Package Unit", "Unidad de Paquete")}: ${eq.outdoor_model}`);
+  } else {
+    if (isGas && eq.furnace_model) lines.push(`${L(lang, "Gas Furnace", "Calefactor a Gas")}: ${eq.furnace_model}`);
+    if (eq.indoor_model) lines.push(`${isGas ? L(lang, "Evaporator Coil", "Serpentín Evaporador") : L(lang, "Air Handler (AHU)", "Manejador de Aire (AHU)")}: ${eq.indoor_model}`);
+    const kw = !isGas && String(eq.indoor_description || "").match(/(\d+(?:\.\d+)?)\s*-?\s*KW/i);
+    if (kw) lines.push(`${kw[1]} KW ${L(lang, "Auxiliary Heat", "Calefacción Auxiliar")}`);
+    if (eq.outdoor_model) lines.push(`${L(lang, "Condenser", "Condensador")}: ${eq.outdoor_model}`);
+  }
+  if (catalog?.thermostat) lines.push(catalog.thermostat);
+  if (!isPkg && eq.lineset_requirements) lines.push(String(eq.lineset_requirements).replace(/Copper Lines\b/i, "Copper Lineset"));
+  const block = catalog?.inclusions?.byType?.[t] || catalog?.inclusions?.default || "";
+  block.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean).forEach(s => lines.push(s));
+  return lines;
+}
+function warrantyLines(eq, lang) {
+  const out = [];
+  const m = Number(eq?.manufacturer_warranty_years);
+  if (m) out.push(`${m}-${L(lang, "Year Manufacturer's Warranty", "Años de Garantía del Fabricante")}`);
+  const lab = Number(eq?.labor_warranty);
+  if (lab) out.push(`${lab}-${L(lang, lab === 1 ? "Year Labor Warranty" : "Year Labor Warranty", "Año(s) de Garantía de Mano de Obra")}`);
+  return out;
+}
+const eqSummary = (eq, lang = "en") => eq ? `${eq.brandName || eq.outdoor_brand} ${eq.size_tons} Ton ${eq.seer2} SEER2 ${Plan.typeLabel(eq, lang)} (AHRI ${eq.ahri_ref || "—"})` : "";
+
+// ── BRAND TILE — blue border = our favorites (Recommended), orange = other brands ──
+const ORANGE = "#C55A11";
+function BrandTile({ name, fav, bestValue, selected, onClick, lang, compact }) {
   return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack={false} showSave onSave={onSave} onStartOver={onStartOver}>
-      <div style={{ padding: "16px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: 0 }}>{t.estimateReady}</h1>
+    <button onClick={onClick} style={{
+      width: "100%", display: "flex", alignItems: "center", gap: 12, background: "transparent",
+      border: "none", padding: 0, cursor: onClick ? "pointer" : "default", fontFamily: FONT, textAlign: "left",
+    }}>
+      <span style={{
+        flex: compact ? "0 0 auto" : "0 0 62%", minWidth: compact ? 150 : 0, background: C.white,
+        border: `3px solid ${fav ? C.blue : ORANGE}`, borderRadius: 6, padding: compact ? "8px 12px" : "12px 14px",
+        fontWeight: 900, fontSize: compact ? 16 : 18, color: C.navy, letterSpacing: 0.5,
+        boxShadow: SHADOW_SM, textAlign: "center", textTransform: "uppercase",
+      }}>{name}</span>
+      {onClick && (
+        <span aria-hidden style={{
+          width: 24, height: 24, borderRadius: 6, border: `2px solid ${C.navy}`, background: selected ? C.blue : C.white,
+          color: C.white, fontWeight: 900, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>{selected ? "✓" : ""}</span>
+      )}
+      {bestValue && (
+        <span style={{
+          background: "#1F5C7A", color: C.white, fontWeight: 800, fontSize: 12, padding: "6px 12px",
+          borderRadius: "4px 14px 4px 14px", whiteSpace: "nowrap",
+        }}>{L(lang, "Best Value", "Mejor Valor")}</span>
+      )}
+    </button>
+  );
+}
+
+function FavLegend({ lang }) {
+  return (
+    <div style={{ background: "#0F2D44", color: C.white, fontWeight: 800, fontSize: 13, textAlign: "center", padding: "8px 10px", margin: "10px 0 12px", letterSpacing: 0.5 }}>
+      {L(lang, "BLUE BORDER = OUR FAVORITES", "BORDE AZUL = NUESTRAS FAVORITAS")}
+    </div>
+  );
+}
+
+function CenteredSpinner({ text }) {
+  return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, padding: 40 }}>
+      <div style={{ width: 48, height: 48, borderRadius: "50%", border: `4px solid ${C.gray}`, borderTop: `4px solid ${C.blue}`, animation: "spin 1s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <p style={{ color: C.blue, fontWeight: 700 }}>{text}</p>
+    </div>
+  );
+}
+
+// ── NEW: WHAT TYPE OF HOME DO YOU HAVE? ───────────────────────────────────────
+function S_HomeType({ brand, t, lang, detected, onSelect, onBack, onCG, onSave, onStartOver }) {
+  const opts = [
+    ["sitebuilt", L(lang, "Site-Built Single-Family", "Casa Unifamiliar Construida en Sitio")],
+    ["plex", L(lang, "Duplex, Triplex or Quad", "Dúplex, Tríplex o Cuádruplex")],
+    ["mobile", L(lang, "Mobile Home", "Casa Móvil")],
+    ["modular", L(lang, "Modular Home", "Casa Modular")],
+    ["apt", L(lang, "Multi-Story Apt or Condo", "Apartamento o Condominio de Varios Pisos")],
+    ["multistory", L(lang, "Multi-Story Single-Family", "Casa Unifamiliar de Varios Pisos")],
+  ];
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{L(lang, "What Type of Home Do You Have?", "¿Qué Tipo de Casa Tiene?")}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{L(lang, "Describe the type of home the unit will be cooling/heating.", "Describa el tipo de casa que la unidad enfriará/calentará.")}</p>
       </div>
-      <div style={{ margin: "12px 20px 0", background: C.white, borderRadius: 20, padding: "20px", boxShadow: SHADOW, border: `2px solid ${C.blue}` }}>
-        {/* House icon */}
-        <div style={{ textAlign: "center", marginBottom: 12 }}>
-          <span style={{ fontSize: 48 }}>🏠</span>
-        </div>
-        <div style={{ textAlign: "center", borderBottom: `1px solid ${C.gray}`, paddingBottom: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: 13, color: C.blue, fontWeight: 700 }}>Estimated Install Price Range</div>
-          <div style={{ fontSize: 32, fontWeight: 900, color: C.navy }}>
-            ${priceRange.min.toLocaleString()} – ${priceRange.max.toLocaleString()}
-          </div>
-        </div>
-        <div style={{ textAlign: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: C.blue, fontWeight: 700 }}>{t.recommendedSystem}</div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{tons} Ton {sysLabel}</div>
-        </div>
-        <p style={{ fontSize: 13, color: "#64748b", textAlign: "center", margin: "0 0 12px" }}>{t.priceRangeDesc}</p>
-        <GuaranteeBadge t={t} />
-        <p style={{ fontSize: 14, fontWeight: 800, color: C.navy, textAlign: "center", margin: "12px 0 0" }}>
-          Next, choose a brand family so we can show your specific options.
+      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+        {opts.map(([id, label], i) => (
+          i % 2 === 0
+            ? <BlueBtn key={id} onClick={() => onSelect(id)} style={detected === id ? { outline: `3px solid ${C.navy}` } : {}}>{label}</BlueBtn>
+            : <WhiteBtn key={id} onClick={() => onSelect(id)} style={detected === id ? { outline: `3px solid ${C.navy}` } : {}}>{label}</WhiteBtn>
+        ))}
+      </div>
+      <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
+    </Shell>
+  );
+}
+
+// ── WHERE WILL YOUR SYSTEM BE INSTALLED? (per system type) ────────────────────
+function S_InstallLocation({ brand, t, lang, systemType, onSelect, onBack, onCG, onSave, onStartOver }) {
+  const ah = { attic: L(lang, "Attic", "Ático"), ceiling: L(lang, "Ceiling", "Techo Interior"), ground: L(lang, "Ground Level", "Nivel del Suelo") };
+  const cond = { ground: L(lang, "Ground", "Suelo"), rooftop: L(lang, "Rooftop", "Azotea") };
+  const indoor = L(lang, "Indoor", "Interior"), outdoor = L(lang, "Outdoor", "Exterior");
+  let opts;
+  if (systemType === "package") {
+    opts = [
+      ["package_ground", L(lang, "Package Unit - Ground Level", "Unidad de Paquete - Nivel del Suelo")],
+      ["package_platform", L(lang, "Package Unit - Raised Platform", "Unidad de Paquete - Plataforma Elevada")],
+      ["package_rooftop", L(lang, "Package Unit - Rooftop", "Unidad de Paquete - Azotea")],
+    ];
+  } else {
+    const ahs = systemType === "gas" ? ["ground"] : ["attic", "ceiling", "ground"];
+    opts = [];
+    for (const a of ahs) for (const c of ["ground", "rooftop"]) opts.push([`ah_${a}_cond_${c}`, `${indoor}: ${ah[a]}  +  ${outdoor}: ${cond[c]}`]);
+  }
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: 0 }}>{L(lang, "Where Will Your System Be Installed?", "¿Dónde se Instalará Su Sistema?")}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>
+          {systemType === "package"
+            ? L(lang, "Confirm the location of your package unit.", "Confirme la ubicación de su unidad de paquete.")
+            : L(lang, "Choose where your indoor unit (air handler) and outdoor unit (condenser) will go.", "Elija dónde irá la unidad interior (manejador de aire) y la unidad exterior (condensador).")}
         </p>
       </div>
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
-        <BlueBtn onClick={onChooseFamily}>{t.chooseBrandFamily}</BlueBtn>
+        {opts.map(([id, label], i) => (i % 2 === 0
+          ? <BlueBtn key={id} onClick={() => onSelect(id)}>{label}</BlueBtn>
+          : <WhiteBtn key={id} onClick={() => onSelect(id)}>{label}</WhiteBtn>))}
+      </div>
+      <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
+    </Shell>
+  );
+}
+
+function RooftopNote({ lang }) {
+  return (
+    <div style={{ background: "#fefce8", border: `1.5px solid ${C.gold}`, borderRadius: 12, padding: "10px 14px", margin: "10px 0" }}>
+      <p style={{ margin: 0, fontSize: 12, color: "#854d0e", fontWeight: 700, lineHeight: 1.45 }}>
+        {L(lang,
+          "Rooftop installs may add $800–$2,000 for crane/rigging. We'll confirm the exact amount with you for approval before delivery.",
+          "Las instalaciones en azotea pueden añadir $800–$2,000 por grúa/maniobras. Confirmaremos el monto exacto con usted para su aprobación antes de la entrega.")}
+      </p>
+    </div>
+  );
+}
+
+// ── YOUR SYSTEM RECOMMENDATIONS ───────────────────────────────────────────────
+function S_Recommendation({ brand, t, lang, quote, catalog, onChooseFamily, onCG, onSave, onStartOver, onBack }) {
+  const { answers, tons, adderTotal } = quote;
+  const rows = Plan.rows(catalog.systems, { sysAnswer: answers.systemType, homeKind: answers.homeKind });
+  const byBrand = new Map();
+  rows.forEach(r => { const a = byBrand.get(r.brandKey + r.system_type) || []; a.push(r); byBrand.set(r.brandKey + r.system_type, a); });
+  const prices = [];
+  for (const list of byBrand.values()) Plan.sized(list, tons).rows.forEach(r => prices.push(r.installation_price + adderTotal));
+  const img = answers.systemType === "gas" ? "/goodman-trio.jpg" : answers.systemType === "package" ? "/package-unit.jpg" : "/three-condensers.jpg";
+  const sysLabel = answers.systemType === "gas" ? L(lang, "Gas Furnace System", "Sistema de Calefacción a Gas")
+    : answers.systemType === "package" ? L(lang, "Package Unit", "Unidad de Paquete") : L(lang, "Electric Heat Pump", "Bomba de Calor Eléctrica");
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{L(lang, "Your System Recommendations", "Sus Recomendaciones de Sistema")}</h1>
+      </div>
+      <div style={{ margin: "12px 20px 0", background: C.white, borderRadius: 20, padding: 16, boxShadow: SHADOW, border: `2px solid ${C.blue}` }}>
+        <div style={{ background: C.navy, color: C.white, borderRadius: 10, padding: "8px 12px", textAlign: "center", fontWeight: 800, fontSize: 13, lineHeight: 1.35 }}>
+          {L(lang, "Based upon the information you have provided, this is our Recommendation", "Según la información que nos dio, esta es nuestra Recomendación")}
+        </div>
+        <div style={{ textAlign: "center", borderBottom: `1px solid ${C.gray}`, padding: "12px 0", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: C.blue, fontWeight: 700 }}>{L(lang, "Estimated Install Price Range", "Rango de Precio Estimado de Instalación")}</div>
+          {prices.length ? (
+            <div style={{ fontSize: 30, fontWeight: 900, color: C.navy }}>{money(Math.min(...prices))} – {money(Math.max(...prices))}</div>
+          ) : (
+            <div style={{ fontSize: 16, fontWeight: 800, color: C.navy, marginTop: 6 }}>{L(lang, "Pricing for your home is being finalized", "Estamos finalizando el precio para su casa")}</div>
+          )}
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{L(lang, "*Depends upon Brand and SEER Rating", "*Depende de la Marca y la Clasificación SEER")}</div>
+        </div>
+        <div style={{ textAlign: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: C.blue, fontWeight: 700 }}>{t.recommendedSystem}</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.navy }}>{tons} {L(lang, "Ton", "Toneladas")} {sysLabel}</div>
+        </div>
+        <p style={{ fontSize: 12, color: "#64748b", textAlign: "center", margin: "0 0 10px" }}>{t.priceRangeDesc}</p>
+        {Plan.isRooftop(answers.installLocation) && <RooftopNote lang={lang} />}
+        <GuaranteeBadge t={t} />
+        <p style={{ fontSize: 14, fontWeight: 800, color: C.navy, textAlign: "center", margin: "12px 0 8px" }}>
+          {L(lang, "Next, choose a brand family so we can show your specific options.", "Ahora, elija una familia de marcas para mostrarle sus opciones.")}
+        </p>
+        <img src={img} alt="" style={{ width: "100%", maxHeight: 170, objectFit: "contain" }} />
+      </div>
+      <div style={{ padding: "16px 20px 0" }}>
+        {prices.length
+          ? <BlueBtn onClick={onChooseFamily}>{t.chooseBrandFamily}</BlueBtn>
+          : <BlueBtn onClick={onCG}>{L(lang, "Ask the Comfort Guide for a call-back", "Pida una llamada al Asistente")}</BlueBtn>}
       </div>
     </Shell>
   );
 }
 
-// ── SCREEN 12: CHOOSE BRAND FAMILY ────────────────────────────────────────────
-function S12_BrandFamily({ brand, t, quote, onSelect, onBack, onCG, onSave, onStartOver }) {
-  const families = [
-    { id: "Budget-Friendly", label: t.budgetFriendly, sub: t.budgetFriendlySub, blue: true },
-    { id: "Commonly Purchased", label: t.commonlyPurchased, sub: t.commonlyPurchasedSub, blue: false },
-    { id: "Trending in 2026", label: t.trending, sub: t.trendingSub, blue: true },
-    { id: "Premium Products", label: t.premiumProducts, sub: t.premiumProductsSub, blue: false },
-  ];
+// ── CHOOSE YOUR BRAND FAMILY ──────────────────────────────────────────────────
+function S_BrandFamily({ brand, t, lang, quote, catalog, onSelect, onBack, onCG, onSave, onStartOver }) {
+  const { answers, tons } = quote;
+  const fams = Plan.families(answers.systemType);
+  const img = answers.systemType === "package" ? "/package-unit.jpg" : answers.systemType === "gas" ? "/goodman-trio.jpg" : "/three-condensers.jpg";
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseFamilyTitle}</h1>
       </div>
-      <HeroCard imgSrc="/three-condensers.jpg" overlayText={t.chooseFamilyDesc} />
+      <HeroCard imgSrc={img} overlayText={t.chooseFamilyDesc} />
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
-        {families.map(f => (
-          <div key={f.id} style={{ textAlign: "center" }}>
-            {f.blue ? <BlueBtn onClick={() => onSelect(f.id)}>{f.label}</BlueBtn> : <WhiteBtn onClick={() => onSelect(f.id)}>{f.label}</WhiteBtn>}
-            <p style={{ margin: "4px 0 0", fontSize: 12, color: C.navy, fontWeight: 600 }}>{f.sub}</p>
+        {fams.map((f, i) => {
+          const avail = Plan.brands(catalog.systems, { sysAnswer: answers.systemType, homeKind: answers.homeKind, fam: f }, tons).length > 0;
+          const Btn = i % 2 === 0 ? BlueBtn : WhiteBtn;
+          return (
+            <div key={f} style={{ textAlign: "center", opacity: avail ? 1 : 0.5 }}>
+              <Btn onClick={() => avail && onSelect(f)} disabled={!avail}>{Plan.familyLabel(f, lang)}</Btn>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: C.navy, fontWeight: 600 }}>
+                {avail ? Plan.familySub(f, lang) : L(lang, "Pricing coming soon for your home's size.", "Precios próximamente para el tamaño de su casa.")}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </Shell>
+  );
+}
+
+// ── CHOOSE A BRAND WITHIN THIS GROUP (choose as many as you like) ─────────────
+const SIDE_DISCHARGE_INFO = {
+  en: {
+    title: "About Side-Discharge Systems",
+    p: [
+      "A side-discharge outdoor unit blows air out the side instead of straight up out of the top. Most use a variable-speed (inverter) compressor that ramps up and down to match what your home needs, instead of switching fully on and off.",
+      "Why people choose them: higher SEER2 efficiency, which lowers electric bills; quieter operation; a slimmer footprint that fits narrow side yards; steadier temperatures and better humidity control. Some models qualify for utility rebates — we'll help you check.",
+      "Things to know: they usually cost more up front than a standard unit, and service calls for a technician trained on inverter equipment.",
+    ],
+  },
+  es: {
+    title: "Sobre los Sistemas de Descarga Lateral",
+    p: [
+      "Una unidad exterior de descarga lateral expulsa el aire por el costado en lugar de hacia arriba. La mayoría usa un compresor de velocidad variable (inverter) que ajusta su potencia a lo que su casa necesita, en lugar de encenderse y apagarse por completo.",
+      "Por qué la gente los elige: mayor eficiencia SEER2, que reduce la factura eléctrica; funcionamiento más silencioso; tamaño más compacto para patios laterales estrechos; temperatura más estable y mejor control de humedad. Algunos modelos califican para reembolsos de la compañía eléctrica — le ayudamos a verificar.",
+      "A tener en cuenta: normalmente cuestan más al inicio que una unidad estándar, y el servicio requiere un técnico capacitado en equipos inverter.",
+    ],
+  },
+};
+
+function S_ChooseBrands({ brand, t, lang, quote, catalog, fam, selected, onToggle, onContinue, onBack, onCG, onSave, onStartOver }) {
+  const { answers, tons } = quote;
+  const [info, setInfo] = useState(false);
+  const list = Plan.brands(catalog.systems, { sysAnswer: answers.systemType, homeKind: answers.homeKind, fam }, tons);
+  const sel = selected || [];
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: C.black }}>{L(lang, "Choose a Brand Within This Group", "Elija una Marca de Este Grupo")}</div>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.black, margin: "2px 0 0" }}>{Plan.familyHeading(fam, lang)}</h1>
+        <div style={{ fontSize: 14, color: C.navy, fontWeight: 600 }}>{Plan.groupSubtitle(answers.systemType, fam, lang)}</div>
+        <div style={{ fontSize: 13, color: C.blue, fontWeight: 700, marginTop: 2 }}>{L(lang, "Choose as many as you like", "Elija todas las que guste")}</div>
+      </div>
+      <div style={{ padding: "0 20px" }}>
+        {fam === "trending" && (
+          <div style={{ background: C.white, fontWeight: 800, fontSize: 12.5, color: C.black, textAlign: "center", padding: "10px", marginTop: 10, lineHeight: 1.4 }}>
+            {L(lang, "SIDE-DISCHARGE UNITS OFFER HIGHER EFFICIENCY, SAVE ELECTRICITY, AND QUALIFY FOR SOME REBATES",
+              "LAS UNIDADES DE DESCARGA LATERAL OFRECEN MAYOR EFICIENCIA, AHORRAN ELECTRICIDAD Y CALIFICAN PARA ALGUNOS REEMBOLSOS")}
           </div>
-        ))}
-      </div>
-    </Shell>
-  );
-}
-
-// ── SCREEN 13: CHOOSE BRAND ───────────────────────────────────────────────────
-function S13_ChooseBrand({ brand, t, quote, brandFamily, onSelect, onBack, onCG, onSave, onStartOver }) {
-  const [brands, setBrands] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { property, answers } = quote;
-  const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
-  const homeType = answers.detectedHomeType || property.type || "site-built";
-  const systemTypes = QuoteEngine.getSystemTypes(answers.systemType, brandFamily, homeType);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const allBrands = new Set();
-      for (const st of systemTypes) {
-        const eq = await QuoteEngine.fetchEquipment(st, tons, brandFamily);
-        eq.forEach(e => { if (e.outdoor_brand) allBrands.add(e.outdoor_brand); });
-      }
-      setBrands([...allBrands].sort());
-      setLoading(false);
-    };
-    load();
-  }, [brandFamily]);
-
-  return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
-      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.chooseBrandTitle}</h1>
-        <p style={{ fontSize: 13, color: C.navy, fontWeight: 600, margin: "6px 0 0" }}>{t.chooseBrandDesc}</p>
-      </div>
-      <HeroCard imgSrc="/brands-outdoor.jpg" />
-      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-        <NavyBtn onClick={() => onSelect("recommended")}>{t.showRecommended} &gt;</NavyBtn>
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 20, color: C.blue, fontWeight: 700 }}>Loading brands...</div>
-        ) : (
-          brands.map(b => (
-            <WhiteBtn key={b} onClick={() => onSelect(b)} style={{ textAlign: "left", display: "flex", justifyContent: "space-between" }}>
-              <span>{b}</span><span>&gt;</span>
-            </WhiteBtn>
-          ))
         )}
+        <FavLegend lang={lang} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {list.map(b => (
+            <BrandTile key={b.key} lang={lang} name={b.name} fav={b.fav} bestValue={b.bestValue}
+              selected={sel.includes(b.key)} onClick={() => onToggle(b.key)} />
+          ))}
+          {!list.length && <p style={{ textAlign: "center", color: C.navy, fontWeight: 700 }}>{L(lang, "No brands are priced for your home's size in this group yet.", "Aún no hay marcas con precio para su casa en este grupo.")}</p>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 18 }}>
+          <BlueBtn onClick={() => onContinue(list.filter(b => sel.includes(b.key)).map(b => b.key))} disabled={!sel.some(k => list.find(b => b.key === k))}>
+            {L(lang, "Show My Selected Brands", "Ver Mis Marcas Seleccionadas")} →
+          </BlueBtn>
+          {fam === "trending" && <WhiteBtn onClick={() => setInfo(true)}>{L(lang, "Learn More About Side-Discharge Systems", "Más Sobre los Sistemas de Descarga Lateral")}</WhiteBtn>}
+        </div>
       </div>
-    </Shell>
-  );
-}
-
-// ── SCREEN 14: EQUIPMENT RESULTS ──────────────────────────────────────────────
-function S14_Equipment({ brand, t, quote, brandFamily, selectedBrand, onSelect, onBack, onCG, onSave, onStartOver, onCompareTiers, lang, savedOptions, onToggleSaved, onReviewSaved }) {
-  const [recommended, setRecommended] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [sizeNote, setSizeNote] = useState(null);
-  const { property, answers, adderTotal } = quote;
-  const tons = QuoteEngine.calcTonnage(property.sqft, answers.coolWell);
-  const homeType = answers.detectedHomeType || property.type || "site-built";
-  const systemTypes = QuoteEngine.getSystemTypes(answers.systemType, brandFamily, homeType);
-
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setSizeNote(null);
-      let recResults = [];
-      let anyAdjusted = false, finalTons = tons;
-
-      for (const st of systemTypes) {
-        // Step up in size automatically if no recommendation exists at the exact requested tonnage
-        const ladder = QuoteEngine.TONNAGE_LADDER.filter(sz => sz >= tons);
-        for (const trySize of ladder) {
-          let rec = await QuoteEngine.fetchEquipment(st, trySize, brandFamily, true, homeType);
-          if (selectedBrand !== "recommended") {
-            rec = rec.filter(e => e.outdoor_brand === selectedBrand);
-          }
-          if (rec.length > 0) {
-            recResults = [...recResults, ...rec];
-            if (trySize !== tons) { anyAdjusted = true; finalTons = trySize; }
-            break; // found a size with recommendations for this system type, stop climbing
-          }
-        }
-      }
-
-      if (anyAdjusted) {
-        setSizeNote(finalTons);
-      }
-
-      recResults.sort((a, b) => a.seer2 - b.seer2);
-      setRecommended(recResults.slice(0, 2));
-      setLoading(false);
-    };
-    load();
-  }, [brandFamily, selectedBrand]);
-
-  if (loading) return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
-        <div style={{ width: 48, height: 48, borderRadius: "50%", border: `4px solid ${C.gray}`, borderTop: `4px solid ${C.blue}`, animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        <p style={{ color: C.blue, fontWeight: 700 }}>Loading systems...</p>
-      </div>
-    </Shell>
-  );
-
-  return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
-      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.recommendationTitle}</h1>
-        <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{brandFamily} · {selectedBrand !== "recommended" ? selectedBrand : "All Brands"}</p>
-      </div>
-      <div style={{ padding: "12px 20px 0" }}>
-        <GuaranteeBadge t={t} />
-      </div>
-
-      {sizeNote && (
-        <div style={{ padding: "0 20px" }}>
-          <div style={{ background: "#fefce8", border: `1.5px solid ${C.amber}`, borderRadius: 12, padding: "10px 14px", marginBottom: 4 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#854d0e", fontWeight: 600, lineHeight: 1.4 }}>
-              ℹ️ The exact size wasn't available in this lineup, so we've shown the next size up ({sizeNote} tons) to make sure your home is properly cooled.
-            </p>
+      {info && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(22,62,100,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setInfo(false)}>
+          <div style={{ background: C.white, borderRadius: 20, padding: 22, maxWidth: 380, width: "100%", border: `2px solid ${C.blue}`, maxHeight: "85vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ margin: "0 0 12px", color: C.navy, fontSize: 19, fontWeight: 900, textAlign: "center" }}>{SIDE_DISCHARGE_INFO[lang].title}</h2>
+            {SIDE_DISCHARGE_INFO[lang].p.map((p, i) => <p key={i} style={{ fontSize: 14, lineHeight: 1.6, color: C.black, fontWeight: 600, margin: "0 0 10px" }}>{p}</p>)}
+            <BlueBtn onClick={() => setInfo(false)}>{t.gotIt}</BlueBtn>
           </div>
         </div>
       )}
+    </Shell>
+  );
+}
 
-      <div style={{ padding: "8px 20px 0" }}>
-        {/* Saved options indicator — visible whenever the customer has saved anything */}
-        {savedOptions.length > 0 && (
-          <button onClick={onReviewSaved} style={{
-            width: "100%", background: `linear-gradient(135deg, ${C.blue}, #0090c8)`, color: C.white,
-            border: `2px solid ${C.white}`, borderRadius: 16, padding: "16px 18px", marginBottom: 16,
-            cursor: "pointer", fontFamily: FONT, display: "flex", alignItems: "center", justifyContent: "space-between",
-            boxShadow: "0 6px 18px rgba(0,176,240,0.45)",
-            animation: "pulseGlow 2s ease-in-out infinite",
-          }}>
-            <style>{`
-              @keyframes pulseGlow {
-                0%, 100% { box-shadow: 0 6px 18px rgba(0,176,240,0.45); }
-                50% { box-shadow: 0 6px 24px rgba(0,176,240,0.75); }
-              }
-            `}</style>
-            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{
-                background: C.white, color: C.blue, borderRadius: "50%",
-                width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: 900, fontSize: 15, flexShrink: 0,
-              }}>{savedOptions.length}</span>
-              <span style={{ fontWeight: 900, fontSize: 15 }}>
-                {lang === "es" ? "Opciones Guardadas" : `Saved Option${savedOptions.length > 1 ? "s" : ""}`}
-              </span>
-            </span>
-            <span style={{ fontWeight: 900, fontSize: 15 }}>{lang === "es" ? "Revisar" : "Review"} →</span>
-          </button>
-        )}
-
-        {/* Recommended systems — exactly 2, our actual curated picks */}
-        {recommended.length > 0 && (
-          <div>
-            {recommended.map((eq, i) => (
-              <EquipmentCard key={eq.id} eq={eq} adders={adderTotal} t={t}
-                recommended={true}
-                label={i === 0 ? `⭐ ${t.bestValue}` : `⚡ ${t.bestEfficiency}`}
-                saved={!!savedOptions.find(s => s.id === eq.id)}
-                onSave={onToggleSaved}
-                onSelect={onSelect}
-              />
-            ))}
+// ── SELECTED RECOMMENDATIONS — one card per chosen brand, SEER buttons ────────
+function S_SelectedRecs({ brand, t, lang, quote, catalog, fam, brandKeys, savedCount, onPick, onChangeSystem, onSavedQuotes, onBack, onCG, onSave, onStartOver }) {
+  const { answers, tons } = quote;
+  const list = Plan.brands(catalog.systems, { sysAnswer: answers.systemType, homeKind: answers.homeKind, fam }, tons)
+    .filter(b => (brandKeys || []).includes(b.key));
+  const sized = list.find(b => b.size !== tons);
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 900, color: C.black, margin: 0 }}>{L(lang, "Selected Recommendations", "Recomendaciones Seleccionadas")}</h1>
+        <div style={{ fontSize: 19, fontWeight: 900, color: C.black, marginTop: 4 }}>{Plan.familyHeading(fam, lang)}</div>
+      </div>
+      <div style={{ padding: "10px 20px 0" }}>
+        {sized && (
+          <div style={{ background: "#fefce8", border: `1.5px solid ${C.gold}`, borderRadius: 12, padding: "8px 12px", marginBottom: 10, fontSize: 12, color: "#854d0e", fontWeight: 600 }}>
+            {L(lang, "Where your exact size isn't offered, we show the next size up so your home is properly cooled — never smaller.",
+              "Donde su tamaño exacto no está disponible, mostramos el siguiente tamaño — nunca uno menor.")}
           </div>
         )}
-
-        {/* Nothing recommended for this brand at any available size */}
-        {recommended.length === 0 && (
-          <div style={{ textAlign: "center", padding: 32 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
-            <p style={{ color: C.navy, fontWeight: 700, marginBottom: 4 }}>
-              {selectedBrand !== "recommended"
-                ? `${selectedBrand} doesn't have a recommended system available for your home's size right now.`
-                : "No recommendations found for this combination."}
-            </p>
-            <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>
-              Try a different brand, or ask your Comfort Guide for help finding the right fit.
-            </p>
-            <BlueBtn onClick={onBack} style={{ marginTop: 8 }}>← Choose a Different Brand</BlueBtn>
-          </div>
-        )}
-
-        {/* Compare other brand families / price tiers */}
-        <div style={{ textAlign: "center", marginTop: 16, marginBottom: 8, display: "flex", flexDirection: "column", gap: 10 }}>
-          <WhiteBtn onClick={onBack} style={{ maxWidth: 280, margin: "0 auto" }}>
-            {lang === "es" ? "Elegir Otra Marca" : "Choose a Different Brand"} →
-          </WhiteBtn>
-          <WhiteBtn onClick={onCompareTiers} style={{ maxWidth: 280, margin: "0 auto" }}>
-            {lang === "es" ? "Comparar Otras Categorías de Precio" : "Compare Other Price Tiers"} →
-          </WhiteBtn>
+        {list.map(b => {
+          const levels = Plan.seerLevels(b.rows);
+          return (
+            <div key={b.key} style={{ background: "transparent", marginBottom: 18 }}>
+              <div style={{ background: C.white, borderRadius: 14, border: `2px solid ${C.blue}`, padding: 14, boxShadow: SHADOW_SM }}>
+                <BrandTile lang={lang} name={b.name} fav={b.fav} bestValue={b.bestValue} compact />
+                <div style={{ color: C.blue, fontWeight: 900, fontSize: 20, marginTop: 10, lineHeight: 1.25 }}>
+                  {b.size} {L(lang, "Ton", "Toneladas")} {Plan.typeLabel(b.rows[0], lang)}
+                </div>
+              </div>
+              <div style={{ textAlign: "center", fontWeight: 800, fontSize: 14, color: C.black, margin: "12px 0 8px" }}>
+                {L(lang, "Choose an Efficiency Level to See Full Details", "Elija un Nivel de Eficiencia para Ver los Detalles")}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {levels.map((r, i) => (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ flex: "0 0 58%" }}>
+                      {i % 2 === 0
+                        ? <BlueBtn onClick={() => onPick(r)} style={{ padding: "10px 12px", fontSize: 14 }}>{r.seer2} SEER2</BlueBtn>
+                        : <WhiteBtn onClick={() => onPick(r)} style={{ padding: "10px 12px", fontSize: 14 }}>{r.seer2} SEER2</WhiteBtn>}
+                    </div>
+                    <div style={{ flex: 1, textAlign: "right", fontWeight: 900, fontSize: 18, color: C.black }}>{money(quoteTotal(r, quote))}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+          {savedCount > 0 && <WhiteBtn onClick={onSavedQuotes}>{L(lang, `Your Saved Quotes (${savedCount})`, `Sus Cotizaciones Guardadas (${savedCount})`)}</WhiteBtn>}
+          <BlueBtn onClick={onChangeSystem}>{L(lang, "Choose A Different System", "Elegir Otro Sistema")}</BlueBtn>
         </div>
       </div>
     </Shell>
   );
 }
 
-// ── SCREEN: REVIEW SAVED OPTIONS ──────────────────────────────────────────────
-function ReviewSavedOptions({ brand, t, lang, quote, savedOptions, onToggleSaved, onSelect, onBack, onCG }) {
-  const { adderTotal } = quote;
+// ── YOUR 45-DAY GUARANTEED QUOTE (full details) ───────────────────────────────
+function S_QuoteDetail({ brand, t, lang, quote, catalog, eq, saved, savedCount, onChoose, onEmail, onSaveAndMore, onSavedQuotes, onBack, onCG, onSave, onStartOver }) {
+  const total = quoteTotal(eq, quote);
+  const deposit = Math.round(total * 0.5);
+  const monthly = Math.round(total / 60);
+  const lines = quoteLines(eq, catalog, lang);
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 21, fontWeight: 900, color: C.black, margin: 0 }}>{L(lang, "Your 45-Day Guaranteed Quote", "Su Cotización Garantizada por 45 Días")}</h1>
+      </div>
+      <div style={{ padding: "12px 20px 0" }}>
+        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW, border: `2px solid ${C.blue}` }}>
+          <BrandTile lang={lang} name={eq.brandName || eq.outdoor_brand} fav={eq.recommended} bestValue={eq.best_value} compact />
+          <div style={{ marginTop: 12 }}>
+            {lines.map((l, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 13.5, color: C.navy, fontWeight: i === 0 ? 900 : 600, borderBottom: i === 0 ? `1px solid ${C.gray}` : "none" }}>
+                <span style={{ color: C.blue, fontWeight: 900 }}>{i === 0 ? "" : "✓"}</span>{l}
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: "center", borderTop: `1px solid ${C.gray}`, marginTop: 10, paddingTop: 10 }}>
+            <div style={{ fontSize: 32, fontWeight: 900, color: C.navy }}>{money(total)}</div>
+            <div style={{ fontSize: 13, color: C.blue, fontWeight: 700 }}>{t.monthlyFrom} ${monthly}{t.perMonth}</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{L(lang, "50% deposit due at scheduling", "Depósito del 50% al programar")}: {money(deposit)}</div>
+          </div>
+          {warrantyLines(eq, lang).map(w => (
+            <div key={w} style={{ background: C.navy, color: C.white, borderRadius: 10, padding: "8px 12px", marginTop: 8, fontWeight: 800, fontSize: 13, textAlign: "center" }}>🛡️ {w}</div>
+          ))}
+          {eq.energy_star && <div style={{ marginTop: 8, textAlign: "center" }}><span style={{ background: "#dcfce7", color: C.green, borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>⚡ {t.energyStar}</span></div>}
+        </div>
+        {Plan.isRooftop(quote.answers.installLocation) && <RooftopNote lang={lang} />}
+        <div style={{ marginTop: 10 }}><GuaranteeBadge t={t} /></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+          <BlueBtn onClick={onChoose}>{L(lang, "Choose This System", "Elegir Este Sistema")}</BlueBtn>
+          <WhiteBtn onClick={onEmail}>{t.emailQuote}</WhiteBtn>
+          <WhiteBtn onClick={onSaveAndMore}>{saved ? L(lang, "Saved ✓ — Make Another Choice", "Guardada ✓ — Hacer Otra Elección") : L(lang, "Save Quote & Make Another Choice", "Guardar Cotización y Hacer Otra Elección")}</WhiteBtn>
+          {savedCount > 0 && <WhiteBtn onClick={onSavedQuotes}>{L(lang, `Your Saved Quotes (${savedCount})`, `Sus Cotizaciones Guardadas (${savedCount})`)}</WhiteBtn>}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ── YOUR 45-DAY GUARANTEED QUOTES (saved list) ────────────────────────────────
+function S_SavedQuotes({ brand, t, lang, quote, saved, onOpen, onEmail, onRemove, onMore, onBack, onCG }) {
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 21, fontWeight: 900, color: C.black, margin: 0 }}>{L(lang, "Your 45-Day Guaranteed Quotes", "Sus Cotizaciones Garantizadas por 45 Días")}</h1>
+        <p style={{ fontSize: 12, color: "#64748b", margin: "6px 0 0" }}>{L(lang, "Prices guaranteed through", "Precios garantizados hasta")} {guaranteeDate(lang)}</p>
+      </div>
+      <div style={{ padding: "12px 20px 0" }}>
+        {!saved.length && (
+          <div style={{ textAlign: "center", padding: 28 }}>
+            <p style={{ color: C.navy, fontWeight: 700 }}>{L(lang, "You haven't saved any quotes yet.", "Aún no ha guardado cotizaciones.")}</p>
+          </div>
+        )}
+        {saved.map(eq => (
+          <div key={eq.id} style={{ display: "flex", gap: 10, alignItems: "stretch", marginBottom: 12 }}>
+            <div onClick={() => onOpen(eq)} style={{ flex: 1, background: C.white, border: `2px solid ${C.blue}`, borderRadius: 12, padding: 12, cursor: "pointer", textAlign: "center", boxShadow: SHADOW_SM }}>
+              <BrandTile lang={lang} name={eq.brandName || eq.outdoor_brand} fav={eq.recommended} compact />
+              <div style={{ color: C.blue, fontWeight: 800, fontSize: 14, marginTop: 6 }}>{eq.size_tons} {L(lang, "Ton", "Ton.")}, {eq.seer2} SEER2</div>
+              <div style={{ color: C.blue, fontWeight: 800, fontSize: 14 }}>{Plan.typeLabel(eq, lang)}</div>
+              <div style={{ fontWeight: 900, fontSize: 18, color: C.black }}>{money(quoteTotal(eq, quote))}</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, width: 104 }}>
+              <button onClick={() => onEmail(eq)} style={{ flex: 1, background: C.navy, color: C.white, border: `2px solid ${C.blue}`, borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT }}>
+                {t.emailQuote}
+              </button>
+              <button onClick={() => onRemove(eq)} style={{ background: "none", border: "none", color: "#b91c1c", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: FONT }}>
+                {L(lang, "Remove", "Quitar")}
+              </button>
+            </div>
+          </div>
+        ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
+          <BlueBtn onClick={onMore}>{L(lang, "Make Another Choice", "Hacer Otra Elección")}</BlueBtn>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+// ── ALMOST THERE (contact form) — "schedule" or "email" mode ──────────────────
+function S_AlmostThere({ brand, t, lang, mode, initial, emailEq, onContinue, onEmailSend, onAfterEmail, onBack, onCG, onViewTerms, onViewPrivacy }) {
+  const [form, setForm] = useState({ name: initial?.name || "", email: initial?.email || "", phone: initial?.phone || "", contactPref: initial?.contactPref || "both" });
+  const [state, setState] = useState(null); // null | sending | sent | error
+  const [err, setErr] = useState("");
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+  const valid = form.name.trim() && emailOk && form.phone.replace(/\D/g, "").length >= 10;
+  const inputStyle = {
+    width: "100%", border: `2px solid ${C.blue}`, borderRadius: 12, padding: "13px 16px", fontSize: 15, outline: "none",
+    fontFamily: FONT, boxSizing: "border-box", color: C.navy, fontWeight: 600, background: C.white, boxShadow: SHADOW_SM, marginBottom: 12,
+  };
+  const label = { fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 };
+  const prefOpts = [["text", t.prefText], ["voice", t.prefVoice], ["both", t.prefBoth]];
+
+  const sendEmail = async () => {
+    if (!valid) return;
+    setState("sending"); setErr("");
+    try { await onEmailSend(form); setState("sent"); }
+    catch (e) { setState("error"); setErr(e.message || L(lang, "Could not send — please try again.", "No se pudo enviar — intente de nuevo.")); }
+  };
 
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>
-          {lang === "es" ? "Sus Opciones Guardadas" : "Your Saved Options"}
-        </h1>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "6px 0 0" }}>
-          {lang === "es" ? "Compare lado a lado y elija la mejor para usted." : "Compare side by side and choose the best fit for you."}
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: 0 }}>{t.personalTitle}</h1>
+        <p style={{ fontSize: 14, color: C.navy, fontWeight: 600, margin: "6px 0 0" }}>
+          {mode === "email" ? L(lang, "Where should we send your quote?", "¿A dónde enviamos su cotización?") : t.personalDesc}
         </p>
+        {mode === "email" && emailEq && <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{eqSummary(emailEq, lang)}</p>}
       </div>
-
-      <div style={{ padding: "12px 20px 0" }}>
-        <GuaranteeBadge t={t} />
-      </div>
-
-      <div style={{ padding: "8px 20px 0" }}>
-        {savedOptions.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 32 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>💾</div>
-            <p style={{ color: C.navy, fontWeight: 700, marginBottom: 16 }}>
-              {lang === "es" ? "Aún no ha guardado ninguna opción." : "You haven't saved any options yet."}
-            </p>
-            <BlueBtn onClick={onBack}>{lang === "es" ? "← Volver a Explorar" : "← Back to Browsing"}</BlueBtn>
+      <div style={{ padding: "16px 20px 0" }}>
+        {state === "sent" ? (
+          <div>
+            <div style={{ background: "#dcfce7", border: `2px solid ${C.green}`, borderRadius: 14, padding: 14, textAlign: "center", color: C.green, fontWeight: 800, fontSize: 15, marginBottom: 14 }}>
+              ✓ {L(lang, `Quote sent to ${form.email}`, `Cotización enviada a ${form.email}`)}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <BlueBtn onClick={() => onContinue(form)}>{t.continueToSchedule}</BlueBtn>
+              <WhiteBtn onClick={onAfterEmail}>{L(lang, "Back to My Quotes", "Volver a Mis Cotizaciones")}</WhiteBtn>
+            </div>
           </div>
         ) : (
-          savedOptions.map(eq => {
-            const total = (eq.installation_price || 0) + adderTotal;
-            const monthly = Math.round(total / 60);
-            return (
-              <div key={eq.id} style={{ background: C.white, borderRadius: 16, padding: 16, marginBottom: 12, boxShadow: SHADOW, border: `1.5px solid ${C.gray}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontWeight: 900, fontSize: 15, color: C.navy }}>{eq.outdoor_brand} {eq.outdoor_series}</div>
-                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                      {eq.size_tons} Ton · SEER2 {eq.seer2} · {eq.brand_family}
-                    </div>
-                  </div>
-                  <button onClick={() => onToggleSaved(eq)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 18, cursor: "pointer", padding: 4 }} title="Remove">✕</button>
-                </div>
-                {eq.quality_pledge && (
-                  <span style={{ display: "inline-block", marginTop: 8, background: "#fef9c3", color: "#92400e", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
-                    🛡️ {eq.quality_pledge_years === 999 ? "Lifetime" : `${eq.quality_pledge_years}-Year`} Quality Pledge
-                  </span>
-                )}
-                <div style={{ margin: "12px 0 2px", fontSize: 24, fontWeight: 900, color: C.navy }}>${total.toLocaleString()}</div>
-                <div style={{ fontSize: 12, color: C.blue, fontWeight: 700, marginBottom: 12 }}>
-                  {lang === "es" ? "Desde" : "As low as"} ${monthly}/mo
-                </div>
-                <BlueBtn onClick={() => onSelect(eq)}>{t.viewFullDetails}</BlueBtn>
-              </div>
-            );
-          })
-        )}
-
-        {savedOptions.length > 0 && (
-          <div style={{ textAlign: "center", marginTop: 12, marginBottom: 8 }}>
-            <WhiteBtn onClick={onBack}>{lang === "es" ? "← Seguir Explorando" : "← Keep Browsing"}</WhiteBtn>
-          </div>
+          <>
+            <div style={label}>{t.nameLabel}</div>
+            <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="John Smith" style={inputStyle} autoComplete="name" />
+            <div style={label}>{t.emailLabel}</div>
+            <input value={form.email} onChange={e => set("email", e.target.value)} placeholder="john@example.com" type="email" style={inputStyle} autoComplete="email" />
+            <div style={label}>{t.phoneLabel}</div>
+            <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(352) 555-0100" type="tel" style={inputStyle} autoComplete="tel" />
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginBottom: 10 }}>{t.contactPref}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+              {prefOpts.map(([id, lab]) => (
+                <button key={id} onClick={() => set("contactPref", id)} style={{
+                  background: form.contactPref === id ? C.blue : C.white, color: form.contactPref === id ? C.white : C.blue,
+                  border: `2px solid ${C.blue}`, borderRadius: 50, padding: "12px 20px", fontWeight: 800, fontSize: 14,
+                  cursor: "pointer", fontFamily: FONT, boxShadow: SHADOW_SM,
+                }}>{lab}</button>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "4px 0 14px", lineHeight: 1.6 }}>
+              {L(lang, "By continuing, you agree to our", "Al continuar, acepta nuestros")}{" "}
+              <span onClick={onViewTerms} style={{ color: C.blue, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{L(lang, "Terms of Service", "Términos de Servicio")}</span>
+              {" "}{L(lang, "and", "y")}{" "}
+              <span onClick={onViewPrivacy} style={{ color: C.blue, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{L(lang, "Privacy Policy", "Política de Privacidad")}</span>.
+            </p>
+            {err && <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 700, textAlign: "center" }}>{err}</p>}
+            {mode === "email" ? (
+              <BlueBtn onClick={sendEmail} disabled={!valid || state === "sending"}>
+                {state === "sending" ? L(lang, "Sending…", "Enviando…") : L(lang, "Email My Quote", "Enviar Mi Cotización")}
+              </BlueBtn>
+            ) : (
+              <BlueBtn onClick={() => valid && onContinue(form)} disabled={!valid}>{t.continueToSchedule}</BlueBtn>
+            )}
+            <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>
+              {L(lang, "Your information is private and secure. We will never sell your data or contact you without your permission.",
+                "Su información es privada y segura. Nunca venderemos sus datos ni lo contactaremos sin su permiso.")}
+            </p>
+          </>
         )}
       </div>
     </Shell>
   );
 }
 
-// ── SCREEN 15: SYSTEM DETAIL / REVIEW ─────────────────────────────────────────
-function S15_SystemDetail({ brand, t, quote, selectedEq, onApprove, onBack, onCG, onSave, onStartOver, lang }) {
-  const { adderTotal } = quote;
-  const total = (selectedEq.installation_price || 0) + adderTotal;
-  const deposit = total * 0.5;
-  const monthly = Math.round(total / 60);
-  const [emailSent, setEmailSent] = useState(false);
-  const [showEmailBox, setShowEmailBox] = useState(false);
-  const [emailInput, setEmailInput] = useState("");
-  const [sendingEmail, setSendingEmail] = useState(false);
-  const [emailError, setEmailError] = useState("");
+// ═════════════════════════════════════════════════════════════════════════════
+// MINI-SPLIT PATH — no mini-split pricing yet, so every choice ends at a
+// call-back request emailed to the office.
+// ═════════════════════════════════════════════════════════════════════════════
+const MS_OPTIONS = [
+  ["1", "1 Room (Zone)", "1 Habitación (Zona)"],
+  ["2", "2 Rooms (Zones)", "2 Habitaciones (Zonas)"],
+  ["3", "3 Rooms (Zones)", "3 Habitaciones (Zonas)"],
+  ["4+", "4+ Rooms (Zones) (or Whole House)", "4+ Habitaciones (Zonas) (o Toda la Casa)"],
+  ["garage", "Garage or Shed", "Garaje o Cobertizo"],
+  ["lanai", "Enclosed Patio or Lanai", "Patio Cerrado o Lanai"],
+];
+const MS_ROOMS = [
+  ["Bedroom", "Dormitorio"], ["Living Room", "Sala"], ["Office", "Oficina"], ["Kitchen", "Cocina"],
+  ["Bonus Room / Addition", "Cuarto Extra / Ampliación"], ["Garage", "Garaje"], ["Shed / Workshop", "Cobertizo / Taller"],
+  ["Enclosed Patio / Lanai", "Patio Cerrado / Lanai"], ["Other", "Otro"],
+];
 
-  const handleEmailQuote = async () => {
-    if (!emailInput.trim()) return;
-    setSendingEmail(true);
-    setEmailError("");
-    try {
-      const r = await fetch("/api/send-email", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: emailInput.trim(),
-          subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
-          htmlContent: buildQuoteEmailHtml({
-            lang, brandName: brand.name, customerName: null, address: null,
-            eq: selectedEq, total, monthly, deposit,
-          }),
-        }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        setEmailError(data.error || "Could not send — please try again.");
-      } else {
-        setEmailSent(true);
-        setShowEmailBox(false);
-        setTimeout(() => setEmailSent(false), 4000);
-      }
-    } catch(e) {
-      setEmailError("Connection issue — please try again.");
-    }
-    setSendingEmail(false);
-  };
-
+function S_MiniSplitStart({ brand, t, lang, onSelect, onBack, onCG, onSave, onStartOver }) {
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.reviewTitle}</h1>
+        <h1 style={{ fontSize: 23, fontWeight: 900, color: C.navy, margin: 0 }}>{t.whatEstimate}</h1>
       </div>
-      <div style={{ padding: "12px 20px 0" }}>
-        {/* Price card */}
-        <div style={{ background: C.white, borderRadius: 16, padding: 20, boxShadow: SHADOW, border: `2px solid ${C.blue}`, marginBottom: 12 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 32, fontWeight: 900, color: C.navy }}>${total.toLocaleString()}</div>
-            <div style={{ fontSize: 13, color: C.blue, fontWeight: 700 }}>{t.monthlyFrom} ${monthly}{t.perMonth}</div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>50% deposit due at scheduling: ${deposit.toLocaleString()}</div>
-          </div>
-        </div>
-        <GuaranteeBadge t={t} />
-        {/* Equipment specs */}
-        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW_SM, marginTop: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 16, color: C.navy, marginBottom: 8 }}>
-            {selectedEq.outdoor_brand} {selectedEq.outdoor_series}
-          </div>
-          {[
-            ["AHRI Reference", selectedEq.ahri_ref],
-            ["Outdoor Unit", selectedEq.outdoor_model],
-            selectedEq.indoor_model ? ["Indoor Unit", selectedEq.indoor_model] : null,
-            selectedEq.furnace_model ? ["Furnace", selectedEq.furnace_model] : null,
-            ["System Size", `${selectedEq.size_tons} Tons`],
-            ["SEER2 Rating", selectedEq.seer2],
-            ["Cooling Capacity", `${selectedEq.cooling_capacity?.toLocaleString()} BTU/h`],
-            ["Labor Warranty", selectedEq.labor_warranty],
-          ].filter(Boolean).map(([label, val]) => (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${C.gray}`, fontSize: 13 }}>
-              <span style={{ color: "#64748b", fontWeight: 600 }}>{label}</span>
-              <span style={{ color: C.navy, fontWeight: 700 }}>{val}</span>
-            </div>
-          ))}
-          {/* Badges */}
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {selectedEq.energy_star && <span style={{ background: "#dcfce7", color: C.green, borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>⚡ {t.energyStar}</span>}
-            {selectedEq.quality_pledge && (
-              <span style={{ background: "#fef9c3", color: "#92400e", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 700 }}>
-                🛡️ {selectedEq.quality_pledge_years === 999 ? "Lifetime" : `${selectedEq.quality_pledge_years}-Year`} {t.qualityPledge}
-              </span>
-            )}
-          </div>
-          {/* Quality Pledge detail */}
-          {selectedEq.quality_pledge && (
-            <div style={{ background: "#fefce8", borderRadius: 10, padding: "10px", marginTop: 10, border: "1px solid #fde68a" }}>
-              <div style={{ fontWeight: 800, fontSize: 12, color: "#92400e", marginBottom: 4 }}>
-                🛡️ {selectedEq.quality_pledge_years === 999 ? "Lifetime" : `${selectedEq.quality_pledge_years}-Year`} Quality Pledge — Issued by {selectedEq.quality_pledge_issuer}
-              </div>
-              <div style={{ fontSize: 11, color: "#78350f", lineHeight: 1.5 }}>
-                If your compressor fails within the covered period, you choose: a brand new replacement compressor, or complete replacement of the entire outdoor unit. No cost to you.
-              </div>
-              <div style={{ fontSize: 10, color: "#a16207", marginTop: 6, fontStyle: "italic" }}>
-                Applies to manufacturer defects. Excludes abuse, neglect, or natural disaster. Maintenance records may be requested.
-              </div>
-            </div>
-          )}
-        </div>
-        {/* Parts warranty */}
-        <div style={{ background: C.navy, borderRadius: 12, padding: "10px 16px", marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 20 }}>⚖️</span>
-          <div>
-            <div style={{ color: C.white, fontWeight: 800, fontSize: 13 }}>{t.partsWarranty}</div>
-            <div style={{ color: C.gray, fontSize: 11 }}>{t.partsWarrantyNote}</div>
-          </div>
-        </div>
-        {/* Installation includes */}
-        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW_SM, marginTop: 12 }}>
-          <div style={{ fontWeight: 900, fontSize: 14, color: C.navy, marginBottom: 10 }}>{t.installation}:</div>
-          {t.installItems.map(item => (
-            <div key={item} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: C.navy, fontWeight: 600 }}>
-              <span style={{ color: C.blue, fontWeight: 900 }}>✓</span>{item}
-            </div>
-          ))}
-        </div>
-        {/* Action buttons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
-          <BlueBtn onClick={onApprove}>{t.approveQuote}</BlueBtn>
-
-          {!showEmailBox && !emailSent && (
-            <WhiteBtn onClick={() => setShowEmailBox(true)}>{t.emailQuote}</WhiteBtn>
-          )}
-
-          {showEmailBox && (
-            <div style={{ background: C.white, border: `2px solid ${C.blue}`, borderRadius: 14, padding: 14, boxShadow: SHADOW_SM }}>
-              <input
-                value={emailInput}
-                onChange={e => setEmailInput(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && handleEmailQuote()}
-                placeholder={lang === "es" ? "Su correo electrónico" : "Your email address"}
-                type="email"
-                style={{ width: "100%", border: `2px solid ${C.gray}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none", fontFamily: FONT, marginBottom: 10, boxSizing: "border-box" }}
-              />
-              {emailError && <p style={{ color: "#dc2626", fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{emailError}</p>}
-              <div style={{ display: "flex", gap: 8 }}>
-                <BlueBtn onClick={handleEmailQuote} disabled={!emailInput.trim() || sendingEmail} style={{ flex: 1, padding: "10px", fontSize: 13 }}>
-                  {sendingEmail ? "..." : (lang === "es" ? "Enviar" : "Send")}
-                </BlueBtn>
-                <WhiteBtn onClick={() => setShowEmailBox(false)} style={{ flex: 1, padding: "10px", fontSize: 13 }}>
-                  {lang === "es" ? "Cancelar" : "Cancel"}
-                </WhiteBtn>
-              </div>
-            </div>
-          )}
-
-          {emailSent && (
-            <div style={{ background: "#dcfce7", border: `2px solid ${C.green}`, borderRadius: 14, padding: "12px", textAlign: "center", color: C.green, fontWeight: 800, fontSize: 14 }}>
-              ✓ {lang === "es" ? "¡Cotización Enviada!" : "Quote Sent!"}
-            </div>
-          )}
-
-          <WhiteBtn onClick={onBack}>{t.reviewMore}</WhiteBtn>
-        </div>
+      <HeroCard imgSrc="/family-hero.jpg" />
+      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+        {MS_OPTIONS.map(([id, en, es], i) => (i % 2 === 0
+          ? <BlueBtn key={id} onClick={() => onSelect(id)}>{L(lang, en, es)}</BlueBtn>
+          : <WhiteBtn key={id} onClick={() => onSelect(id)}>{L(lang, en, es)}</WhiteBtn>))}
       </div>
     </Shell>
   );
 }
+
+function S_MiniSplitRooms({ brand, t, lang, count, onContinue, onBack, onCG, onSave, onStartOver }) {
+  const max = Number(count) || 1;
+  const [sel, setSel] = useState([]);
+  const toggle = (r) => setSel(p => p.includes(r) ? p.filter(x => x !== r) : (p.length >= max ? [...p.slice(1), r] : [...p, r]));
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{L(lang, "Which Rooms?", "¿Qué Habitaciones?")}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "6px 0 0" }}>{L(lang, `Choose up to ${max}.`, `Elija hasta ${max}.`)}</p>
+      </div>
+      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+        {MS_ROOMS.map(([en, es]) => {
+          const on = sel.includes(en);
+          return (
+            <button key={en} onClick={() => toggle(en)} style={{
+              background: on ? C.blue : C.white, color: on ? C.white : C.blue, border: `2px solid ${C.blue}`, borderRadius: 50,
+              padding: "12px 20px", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: FONT, boxShadow: SHADOW_SM,
+            }}>{on ? "✓ " : ""}{L(lang, en, es)}</button>
+          );
+        })}
+        <BlueBtn onClick={() => onContinue(sel)} disabled={!sel.length} style={{ marginTop: 6 }}>{L(lang, "Continue", "Continuar")} →</BlueBtn>
+      </div>
+    </Shell>
+  );
+}
+
+function S_MiniSplitRequest({ brand, t, lang, choice, rooms, property, onDone, onBack, onCG, onViewTerms, onViewPrivacy }) {
+  const [form, setForm] = useState({ name: "", phone: "", email: "", contactPref: "both" });
+  const [state, setState] = useState(null);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const valid = form.name.trim() && form.phone.replace(/\D/g, "").length >= 10;
+  const multi = choice === "4+";
+  const choiceLabel = (MS_OPTIONS.find(o => o[0] === choice) || [null, choice])[1];
+  const inputStyle = {
+    width: "100%", border: `2px solid ${C.blue}`, borderRadius: 12, padding: "13px 16px", fontSize: 15, outline: "none",
+    fontFamily: FONT, boxSizing: "border-box", color: C.navy, fontWeight: 600, background: C.white, boxShadow: SHADOW_SM, marginBottom: 12,
+  };
+  const submit = async () => {
+    if (!valid) return;
+    setState("sending");
+    const notes = `Mini-split request: ${choiceLabel}${rooms?.length ? " — " + rooms.join(", ") : ""}`;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/leads`, {
+        method: "POST", headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({
+          lead_type: "minisplit_request", property_address: property?.address || null, customer_name: form.name,
+          customer_email: form.email || null, customer_phone: form.phone, contact_preference: form.contactPref,
+          notes, language: lang, lead_status: "new", organization_id: 1,
+        }),
+      }).catch(() => {});
+      const pref = { text: "Text message", voice: "Phone call", both: "Text and phone call" }[form.contactPref];
+      const r = await fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: MINISPLIT_REQUEST_EMAIL,
+          subject: `Mini-Split Request — ${form.name}`,
+          htmlContent: `<div style="font-family:sans-serif;max-width:520px">
+            <h2 style="color:#163E64">New Mini-Split Request</h2>
+            <p><strong>What:</strong> ${esc(choiceLabel)}</p>
+            ${rooms?.length ? `<p><strong>Rooms:</strong> ${esc(rooms.join(", "))}</p>` : ""}
+            <p><strong>Name:</strong> ${esc(form.name)}</p>
+            <p><strong>Phone:</strong> ${esc(form.phone)}</p>
+            ${form.email ? `<p><strong>Email:</strong> ${esc(form.email)}</p>` : ""}
+            <p><strong>Contact by:</strong> ${pref}</p>
+            ${property?.address ? `<p><strong>Address:</strong> ${esc(property.address)}</p>` : ""}
+            ${property?.sqft ? `<p><strong>Home:</strong> ${esc(String(property.sqft))} sq ft${property.type ? " · " + esc(property.type) : ""}</p>` : ""}
+            <p style="color:#64748b;font-size:13px">Submitted from the online estimate app (${lang === "es" ? "Spanish" : "English"}).</p></div>`,
+        }),
+      });
+      if (!r.ok) throw new Error("email");
+      setState("sent");
+    } catch (e) { setState("error"); }
+  };
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        {multi ? (
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.black, lineHeight: 1.45 }}>
+            <p style={{ margin: "0 0 10px" }}>{L(lang, "Multi-Zone Mini-Split Systems have unique requirements that are heavily dependent upon how the home is laid out.", "Los sistemas mini-split multizona tienen requisitos únicos que dependen mucho de la distribución de la casa.")}</p>
+            <p style={{ margin: "0 0 10px" }}>{L(lang, "Electrical requirements also have to be taken into account.", "También hay que considerar los requisitos eléctricos.")}</p>
+            <p style={{ margin: "0 0 10px" }}>{L(lang, "Please enter your information below and tell us when best we should call you.", "Ingrese sus datos abajo y díganos cuándo es mejor llamarle.")}</p>
+            <p style={{ margin: 0 }}>{L(lang, "The call will take approximately 15 minutes to complete. No obligation to purchase anything.", "La llamada dura aproximadamente 15 minutos. Sin obligación de comprar nada.")}</p>
+          </div>
+        ) : (
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.black, lineHeight: 1.45 }}>
+            <h1 style={{ fontSize: 21, fontWeight: 900, color: C.navy, margin: "0 0 8px" }}>{L(lang, "Let's Talk About Your Mini-Split", "Hablemos de Su Mini-Split")}</h1>
+            <p style={{ margin: 0 }}>{L(lang, "Mini-split pricing depends on the room, where the indoor and outdoor units can go, and your electrical panel. Leave your information and we'll call you — about 15 minutes, no obligation.", "El precio de un mini-split depende de la habitación, dónde pueden ir las unidades y su panel eléctrico. Deje sus datos y le llamaremos — unos 15 minutos, sin obligación.")}</p>
+          </div>
+        )}
+      </div>
+      <div style={{ padding: "16px 20px 0" }}>
+        {state === "sent" ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ background: "#dcfce7", border: `2px solid ${C.green}`, borderRadius: 14, padding: 14, color: C.green, fontWeight: 800, fontSize: 15, marginBottom: 14 }}>
+              ✓ {L(lang, "Thank you! We'll be in touch shortly.", "¡Gracias! Nos comunicaremos pronto.")}
+            </div>
+            <BlueBtn onClick={onDone}>{L(lang, "Done", "Listo")}</BlueBtn>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 }}>{t.nameLabel}</div>
+            <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="John Smith" style={inputStyle} />
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 }}>{t.phoneLabel}</div>
+            <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(352) 555-0100" type="tel" style={inputStyle} />
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 }}>{t.emailLabel} ({L(lang, "optional", "opcional")})</div>
+            <input value={form.email} onChange={e => set("email", e.target.value)} placeholder="john@example.com" type="email" style={inputStyle} />
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginBottom: 10 }}>{L(lang, "How would you like us to contact you?", "¿Cómo prefiere que lo contactemos?")}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+              {[["text", t.prefText], ["voice", t.prefVoice], ["both", t.prefBoth]].map(([id, lab]) => (
+                <button key={id} onClick={() => set("contactPref", id)} style={{
+                  background: form.contactPref === id ? C.blue : C.white, color: form.contactPref === id ? C.white : C.blue,
+                  border: `2px solid ${C.blue}`, borderRadius: 50, padding: "12px 20px", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: FONT, boxShadow: SHADOW_SM,
+                }}>{lab}</button>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "4px 0 12px" }}>
+              {L(lang, "By continuing, you agree to our", "Al continuar, acepta nuestros")}{" "}
+              <span onClick={onViewTerms} style={{ color: C.blue, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{L(lang, "Terms of Service", "Términos de Servicio")}</span>{" "}{L(lang, "and", "y")}{" "}
+              <span onClick={onViewPrivacy} style={{ color: C.blue, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{L(lang, "Privacy Policy", "Política de Privacidad")}</span>.
+            </p>
+            {state === "error" && <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 700, textAlign: "center" }}>{L(lang, "Something went wrong — please try again, or call us.", "Algo salió mal — intente de nuevo o llámenos.")}</p>}
+            <BlueBtn onClick={submit} disabled={!valid || state === "sending"}>{state === "sending" ? L(lang, "Sending…", "Enviando…") : L(lang, "Request My Call", "Solicitar Mi Llamada")}</BlueBtn>
+          </>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+const MINISPLIT_REQUEST_EMAIL = "Lloyd@Air-CareConnect.com";
+const OFFICE_EMAIL = "info@air-careconnect.com";
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const rpc = async (fn, args) => {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: "POST", headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" }, body: JSON.stringify(args),
+  });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((data && data.message) || `${fn} failed`);
+  return Array.isArray(data) ? data[0] : data;
+};
+
 
 // ── LEGAL DOCUMENT CONTENT ─────────────────────────────────────────────────────
 const TERMS_OF_SERVICE_SECTIONS = [
@@ -2928,67 +3164,6 @@ function LegalDocScreen({ brand, t, title, sections, onBack, onCG }) {
 }
 
 // ── SCREEN 16: PERSONAL INFO ──────────────────────────────────────────────────
-function S16_PersonalInfo({ brand, t, onContinue, onBack, onCG, onSave, onStartOver, onViewTerms, onViewPrivacy }) {
-  const [form, setForm] = useState({ name: "", email: "", phone: "", contactPref: "both" });
-  const valid = form.name && form.email && form.phone;
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-
-  const inputStyle = {
-    width: "100%", border: `2px solid ${C.blue}`, borderRadius: 12,
-    padding: "13px 16px", fontSize: 15, outline: "none", fontFamily: FONT,
-    boxSizing: "border-box", color: C.navy, fontWeight: 600,
-    background: C.white, boxShadow: SHADOW_SM, marginBottom: 12,
-  };
-
-  const prefOpts = [
-    { id: "text", label: t.prefText },
-    { id: "voice", label: t.prefVoice },
-    { id: "both", label: t.prefBoth },
-  ];
-
-  return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
-      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: 0 }}>{t.personalTitle}</h1>
-        <p style={{ fontSize: 14, color: C.navy, fontWeight: 600, margin: "6px 0 0" }}>{t.personalDesc}</p>
-      </div>
-      <div style={{ padding: "16px 20px 0" }}>
-        <div style={{ fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 }}>{t.nameLabel}</div>
-        <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="John Smith" style={inputStyle} />
-        <div style={{ fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 }}>{t.emailLabel}</div>
-        <input value={form.email} onChange={e => set("email", e.target.value)} placeholder="john@example.com" type="email" style={inputStyle} />
-        <div style={{ fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 }}>{t.phoneLabel}</div>
-        <input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="(352) 555-0100" type="tel" style={inputStyle} />
-        <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginBottom: 10 }}>{t.contactPref}</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-          {prefOpts.map(p => (
-            <button key={p.id} onClick={() => set("contactPref", p.id)} style={{
-              background: form.contactPref === p.id ? C.blue : C.white,
-              color: form.contactPref === p.id ? C.white : C.blue,
-              border: `2px solid ${C.blue}`, borderRadius: 50,
-              padding: "12px 20px", fontWeight: 800, fontSize: 14,
-              cursor: "pointer", fontFamily: FONT, boxShadow: SHADOW_SM,
-              transition: "all 0.15s",
-            }}>{p.label}</button>
-          ))}
-        </div>
-        <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "4px 0 14px", lineHeight: 1.6 }}>
-          By continuing, you agree to our{" "}
-          <span onClick={onViewTerms} style={{ color: C.blue, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>Terms of Service</span>
-          {" "}and{" "}
-          <span onClick={onViewPrivacy} style={{ color: C.blue, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>Privacy Policy</span>.
-        </p>
-        <BlueBtn onClick={() => valid && onContinue(form)} disabled={!valid}>
-          {t.continueToSchedule}
-        </BlueBtn>
-        <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>
-          Your information is private and secure. We will never sell your data or contact you without your permission.
-        </p>
-      </div>
-    </Shell>
-  );
-}
-
 // ── CHECKOUT: PAYMENT METHOD SELECTION ────────────────────────────────────────
 function CheckoutPayment({ brand, t, quote, selectedEq, customerInfo, onSelectMethod, onBack, onCG }) {
   const total = (selectedEq.installation_price || 0) + (quote.adderTotal || 0);
@@ -3049,23 +3224,23 @@ function CheckoutPayment({ brand, t, quote, selectedEq, customerInfo, onSelectMe
   );
 }
 
-// ── CHECKOUT: CARD PAYMENT FORM (Real Stripe Elements) ────────────────────────
-function CheckoutCard({ brand, t, deposit, customerInfo, onSuccess, onBack, onCG }) {
+// ── CHECKOUT: CARD OR BANK (ACH) DEPOSIT — real Stripe Payment Element ────────
+// Card charges instantly. ACH uses Stripe's bank-account flow (instant bank login or
+// micro-deposits); the payment shows as "processing" until the bank confirms (1–4 business days).
+function CheckoutStripe({ brand, t, lang, method, deposit, customerInfo, onSuccess, onBack, onCG }) {
+  const isAch = method === "ach";
   const [stripe, setStripe] = useState(null);
   const [elements, setElements] = useState(null);
-  const [cardElement, setCardElement] = useState(null);
   const [clientSecret, setClientSecret] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
-  const cardRef = useRef(null);
+  const mountRef = useRef(null);
+  const mounted = useRef(false);
 
-  // Load Stripe.js and create the payment intent
   useEffect(() => {
     loadStripe(async (stripeInst) => {
       setStripe(stripeInst);
-
-      // Create payment intent on the server
       try {
         const r = await fetch("/api/create-payment-intent", {
           method: "POST",
@@ -3074,150 +3249,80 @@ function CheckoutCard({ brand, t, deposit, customerInfo, onSuccess, onBack, onCG
             amount: deposit,
             customerEmail: customerInfo?.email,
             customerName: customerInfo?.name,
-            description: "Air-Care Connect - AC System Installation Deposit",
-            paymentMethodType: "card",
+            description: `${brand.name} - AC System Installation Deposit`,
+            paymentMethodType: isAch ? "ach" : "card",
           }),
         });
         const data = await r.json();
-        if (data.clientSecret) {
-          setClientSecret(data.clientSecret);
-        } else {
-          setError(data.error || "Could not initialize payment");
-        }
-      } catch(e) {
-        setError("Could not connect to payment processor");
+        if (data.clientSecret) setClientSecret(data.clientSecret);
+        else setError(data.error || L(lang, "Could not start the payment. Please try again.", "No se pudo iniciar el pago. Intente de nuevo."));
+      } catch (e) {
+        setError(L(lang, "Could not connect to the payment processor.", "No se pudo conectar con el procesador de pagos."));
       }
     });
   }, []);
 
-  // Mount the Stripe card element once we have stripe + clientSecret
   useEffect(() => {
-    if (!stripe || !clientSecret || !cardRef.current || cardElement) return;
-
-    const elementsInst = stripe.elements({ clientSecret });
-    const card = elementsInst.create("payment");
-    card.mount(cardRef.current);
-    card.on("ready", () => setReady(true));
-    card.on("change", (event) => {
-      if (event.error) setError(event.error.message);
-      else setError("");
+    if (!stripe || !clientSecret || !mountRef.current || mounted.current) return;
+    mounted.current = true;
+    const el = stripe.elements({ clientSecret, appearance: { theme: "stripe", variables: { colorPrimary: C.blue } } });
+    const payment = el.create("payment", {
+      defaultValues: { billingDetails: { name: customerInfo?.name || "", email: customerInfo?.email || "" } },
     });
-
-    setElements(elementsInst);
-    setCardElement(card);
+    payment.mount(mountRef.current);
+    payment.on("ready", () => setReady(true));
+    payment.on("change", (ev) => setError(ev.error ? ev.error.message : ""));
+    setElements(el);
   }, [stripe, clientSecret]);
 
   const handlePay = async () => {
     if (!stripe || !elements || processing) return;
     setProcessing(true);
     setError("");
-
-    const { error: confirmError } = await stripe.confirmPayment({
+    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
+      confirmParams: { return_url: window.location.origin + "/" },
       redirect: "if_required",
     });
-
     if (confirmError) {
       setError(confirmError.message || t.cardDeclined);
       setProcessing(false);
       return;
     }
-
+    const status = paymentIntent?.status || "";
+    if (!["succeeded", "processing", "requires_capture"].includes(status)) {
+      setError(L(lang, "The payment was not completed. Please try again.", "El pago no se completó. Intente de nuevo."));
+      setProcessing(false);
+      return;
+    }
     setProcessing(false);
-    onSuccess({ method: "card", holdHours: 0 }); // instant lock on success
+    onSuccess({ method: isAch ? "ach" : "card", intentId: paymentIntent?.id || null, status, holdHours: status === "processing" ? 96 : 0 });
   };
 
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.cardFormTitle}</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{isAch ? t.achFormTitle : t.cardFormTitle}</h1>
         <div style={{ fontSize: 24, fontWeight: 900, color: C.blue, margin: "10px 0" }}>${deposit.toLocaleString()}</div>
       </div>
-
       <div style={{ padding: "8px 20px 0" }}>
-        <div style={{
-          background: C.white, border: `2px solid ${C.blue}`, borderRadius: 12,
-          padding: "16px", marginBottom: 14, boxShadow: SHADOW_SM, minHeight: 50,
-        }}>
-          {!ready && !error && (
-            <div style={{ textAlign: "center", color: C.blue, fontWeight: 600, fontSize: 13 }}>
-              Loading secure payment form...
-            </div>
-          )}
-          <div ref={cardRef} />
+        <div style={{ background: C.white, border: `2px solid ${C.blue}`, borderRadius: 12, padding: 16, marginBottom: 14, boxShadow: SHADOW_SM, minHeight: 50 }}>
+          {!ready && !error && <div style={{ textAlign: "center", color: C.blue, fontWeight: 600, fontSize: 13 }}>{L(lang, "Loading secure payment form...", "Cargando formulario de pago seguro...")}</div>}
+          <div ref={mountRef} />
         </div>
-
+        {isAch && (
+          <div style={{ background: "#f0f9ff", borderRadius: 10, padding: "10px 14px", marginBottom: 12, border: `1px solid ${C.blue}` }}>
+            <p style={{ margin: 0, fontSize: 12, color: C.navy, fontWeight: 600, lineHeight: 1.5 }}>{t.achPending}</p>
+          </div>
+        )}
         {error && <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 700, textAlign: "center", marginBottom: 8 }}>{error}</p>}
-
         <BlueBtn onClick={handlePay} disabled={!ready || processing} style={{ marginTop: 8 }}>
-          {processing ? t.processingPayment : `${t.payNow} - $${deposit.toLocaleString()}`}
+          {processing ? t.processingPayment : `${isAch ? t.achSubmit : t.payNow} - $${deposit.toLocaleString()}`}
         </BlueBtn>
-
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16 }}>
-          <span style={{ fontSize: 16 }}>{"\uD83D\uDD12"}</span>
-          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>Secured by Stripe — your card details are encrypted</span>
+          <span style={{ fontSize: 16 }}>{"🔒"}</span>
+          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{L(lang, "Secured by Stripe — your details are encrypted and never stored by us", "Protegido por Stripe — sus datos están cifrados y nunca los guardamos")}</span>
         </div>
-      </div>
-    </Shell>
-  );
-}
-
-// ── CHECKOUT: ACH BANK PAYMENT FORM ───────────────────────────────────────────
-function CheckoutACH({ brand, t, deposit, onSuccess, onBack, onCG }) {
-  const [form, setForm] = useState({ routing: "", account: "", accountType: "checking" });
-  const [processing, setProcessing] = useState(false);
-
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const valid = form.routing.length === 9 && form.account.length >= 4;
-
-  const handleSubmit = async () => {
-    if (!valid) return;
-    setProcessing(true);
-    await new Promise(r => setTimeout(r, 1800));
-    setProcessing(false);
-    onSuccess({ method: "ach", holdHours: 24 });
-  };
-
-  const inputStyle = {
-    width: "100%", border: `2px solid ${C.blue}`, borderRadius: 12,
-    padding: "13px 16px", fontSize: 15, outline: "none", fontFamily: FONT,
-    boxSizing: "border-box", color: C.navy, fontWeight: 600,
-    background: C.white, boxShadow: SHADOW_SM, marginBottom: 12,
-  };
-
-  return (
-    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
-      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.achFormTitle}</h1>
-        <div style={{ fontSize: 24, fontWeight: 900, color: C.blue, margin: "10px 0" }}>${deposit.toLocaleString()}</div>
-      </div>
-
-      <div style={{ padding: "8px 20px 0" }}>
-        <input value={form.routing} onChange={e => set("routing", e.target.value.replace(/\D/g,"").slice(0,9))}
-          placeholder={t.achRouting} inputMode="numeric" style={inputStyle} />
-        <input value={form.account} onChange={e => set("account", e.target.value.replace(/\D/g,"").slice(0,17))}
-          placeholder={t.achAccount} inputMode="numeric" style={inputStyle} />
-
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-          {["checking","savings"].map(type => (
-            <button key={type} onClick={() => set("accountType", type)} style={{
-              flex: 1, background: form.accountType === type ? C.blue : C.white,
-              color: form.accountType === type ? C.white : C.blue,
-              border: `2px solid ${C.blue}`, borderRadius: 50, padding: "10px",
-              fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: FONT,
-            }}>{type === "checking" ? t.achChecking : t.achSavings}</button>
-          ))}
-        </div>
-
-        <div style={{ background: "#f0f9ff", borderRadius: 10, padding: "10px 14px", marginBottom: 14, border: `1px solid ${C.blue}` }}>
-          <p style={{ margin: 0, fontSize: 12, color: C.navy, fontWeight: 600, lineHeight: 1.5 }}>
-            {t.achPending}
-          </p>
-        </div>
-
-        <BlueBtn onClick={handleSubmit} disabled={!valid || processing}>
-          {processing ? t.processingPayment : t.achSubmit}
-        </BlueBtn>
       </div>
     </Shell>
   );
@@ -3323,7 +3428,10 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
     const load = async () => {
       setLoading(true);
       try {
-        const data = await sb.get("availability", "is_open=eq.true&order=available_date.asc");
+        // Earliest bookable day is tomorrow (local time) — never a past date or today.
+        const tm = new Date(); tm.setDate(tm.getDate() + 1);
+        const from = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, "0")}-${String(tm.getDate()).padStart(2, "0")}`;
+        const data = await sb.get("availability", `is_open=eq.true&available_date=gte.${from}&order=available_date.asc`);
         // Permanent rule: never show Sundays as bookable, even if one is accidentally
         // marked open in the database. day 0 = Sunday in JS Date.
         const noSundays = data.filter(d => new Date(d.available_date + "T00:00:00").getDay() !== 0);
@@ -3532,10 +3640,19 @@ export default function App() {
   const [property, setProperty] = useState(null);
   const [answers, setAnswers] = useState({});
   const [quote, setQuote] = useState(null);
-  const [brandFamily, setBrandFamily] = useState(null);
-  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [catalog, setCatalog] = useState(null);
+  const [catalogError, setCatalogError] = useState(false);
+  const [quoteFailed, setQuoteFailed] = useState(false);
+  const [brandFamily, setBrandFamily] = useState(null);      // budget | common | trending | premium
+  const [selectedBrands, setSelectedBrands] = useState([]);  // brand keys chosen on the brand page
   const [selectedEq, setSelectedEq] = useState(null);
   const [savedOptions, setSavedOptions] = useState([]);
+  const [emailEq, setEmailEq] = useState(null);
+  const [formMode, setFormMode] = useState("schedule");      // Almost There: schedule | email
+  const [formReturn, setFormReturn] = useState("s15");
+  const [quoteId, setQuoteId] = useState(null);
+  const [msChoice, setMsChoice] = useState(null);
+  const [msRooms, setMsRooms] = useState([]);
   const [customerInfo, setCustomerInfo] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [bookingRef, setBookingRef] = useState(null);
@@ -3544,432 +3661,403 @@ export default function App() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [resumeChecked, setResumeChecked] = useState(false);
 
-  const brand = BRAND[lang];
-  const t = T[lang];
-  const go = s => setScreen(s);
+  // Contractor name comes from Journey (white-label); Spanish keeps the Aire Azul brand.
+  const brand = lang === "en" && catalog?.org?.name ? { ...BRAND.en, name: catalog.org.name } : BRAND[lang];
+  const t = lang === "en" && catalog?.org?.name
+    ? { ...T.en, whyP1: T.en.whyP1.replace(/^Air-Care Connect/, catalog.org.name) }
+    : T[lang];
+  const go = s => { setScreen(s); try { window.scrollTo(0, 0); } catch (e) {} };
   const ans = (k, v) => setAnswers(p => ({ ...p, [k]: v }));
-  const toggleSavedOption = (eq) => {
-    setSavedOptions(p => p.find(s => s.id === eq.id) ? p.filter(s => s.id !== eq.id) : [...p, eq]);
-  };
+  const cg = () => setShowCG(true);
+  const common = { brand, t, lang, onCG: cg, onStartOver: () => handleStartOver(), onSave: () => setShowSaveModal(true) };
 
-  // Fully clear everything and return to the landing screen - lets a customer
-  // genuinely escape a stale/abandoned session, even months later.
+  // Load the live pricebook as soon as the app opens.
+  useEffect(() => {
+    Catalog.load().then(setCatalog).catch(() => setCatalogError(true));
+  }, []);
+
+  const isSaved = (eq) => !!eq && savedOptions.some(s => s.id === eq.id);
+  const saveOption = (eq) => setSavedOptions(p => (p.some(s => s.id === eq.id) ? p : [...p, eq]));
+  const removeOption = (eq) => setSavedOptions(p => p.filter(s => s.id !== eq.id));
+
   const handleStartOver = () => {
-    try { localStorage.removeItem("acc_progress"); } catch(e) {}
+    try { localStorage.removeItem("acc_progress"); } catch (e) {}
     setScreen("s1"); setProperty(null); setAnswers({}); setQuote(null);
-    setBrandFamily(null); setSelectedBrand(null); setSelectedEq(null);
+    setBrandFamily(null); setSelectedBrands([]); setSelectedEq(null); setSavedOptions([]); setEmailEq(null);
+    setQuoteId(null); setMsChoice(null); setMsRooms([]);
     setCustomerInfo(null); setPaymentInfo(null); setBookingRef(null); setInstallDate(null);
-    setSavedOptions([]);
   };
 
-  // Called when payment succeeds (card/ACH) or financing application is initiated (FTL/Microf).
-  // The install slot was already held when the customer picked their date on the Schedule screen,
-  // so this step just finalizes the actual booking record with payment details.
-  const finalizeBooking = async (paymentInfoArg) => {
-    const total = (selectedEq?.installation_price || 0) + (quote?.adderTotal || 0);
-    const isFinancing = paymentInfoArg?.method === "ftl" || paymentInfoArg?.method === "microf";
-
+  // Record a quote (for the office) and return its id. Never blocks the customer.
+  const recordQuote = async (eq, info, status) => {
+    if (!eq) return null;
     try {
-      const bookingPayload = {
-        customer_name: customerInfo?.name || null,
-        customer_email: customerInfo?.email || null,
-        customer_phone: customerInfo?.phone || null,
-        contact_preference: customerInfo?.contactPref || null,
-        install_date: installDate || null,
-        install_address: property?.address || null,
-        payment_method: paymentInfoArg?.method || null,
-        payment_status: isFinancing ? "pending" : "deposit_paid",
-        deposit_amount: isFinancing ? 0 : Math.round(total * 0.5),
-        financing_company: isFinancing ? paymentInfoArg.method : null,
-        financing_status: isFinancing ? "pending" : "not_applicable",
-        financing_applied_at: isFinancing ? new Date().toISOString() : null,
-        slot_held_until: new Date(Date.now() + (paymentInfoArg?.holdHours || 0) * 3600000).toISOString(),
-        booking_status: "confirmed",
-        organization_id: 1,
-      };
+      const total = quoteTotal(eq, quote);
+      const row = await rpc("create_quote", { p: {
+        property_address: property?.address || null, property_sqft: property?.sqft || null,
+        property_type: answers.homeKind || null, system_type: eq.system_type, home_type: answers.homeKind || null,
+        cooling_adequate: answers.coolWell || null, flood_zone: answers.floodZone === "yes", system_age: answers.systemAge || null,
+        hoa_required: answers.hoa === "yes", install_location: answers.installLocation || null, rooftop_note: Plan.isRooftop(answers.installLocation),
+        journey_equipment_id: eq.id, ahri_ref: eq.ahri_ref || null, base_price: eq.installation_price, qualifiers_total: quote?.adderTotal || 0,
+        final_price: total, deposit_amount: Math.round(total * 0.5), brand_family_selected: eq.brand_family || null,
+        brand_selected: eq.brandName || eq.outdoor_brand, equipment_summary: eqSummary(eq),
+        customer_name: info?.name || null, customer_email: info?.email || null, customer_phone: info?.phone || null,
+        language: lang, quote_status: status || "pending",
+      } });
+      return row?.id || null;
+    } catch (e) { console.warn("Quote record error:", e); return null; }
+  };
 
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/bookings`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json", Prefer: "return=representation" },
-        body: JSON.stringify(bookingPayload),
-      });
-      const data = await r.json();
-      const created = Array.isArray(data) ? data[0] : data;
-      const finalBookingRef = created?.booking_reference || `ACB-${new Date().getFullYear()}-PENDING`;
-      setBookingRef(finalBookingRef);
+  const notifyOffice = (subject, rows) => {
+    const html = `<div style="font-family:sans-serif;max-width:560px"><h2 style="color:#163E64">${esc(subject)}</h2>${
+      rows.filter(r => r && r[1]).map(([k, v]) => `<p><strong>${esc(k)}:</strong> ${esc(v)}</p>`).join("")}</div>`;
+    fetch("/api/send-email", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: OFFICE_EMAIL, subject, htmlContent: html }) }).catch(() => {});
+  };
 
-      // Send real confirmation email + SMS now that the booking is confirmed
-      const confirmHtml = buildConfirmationEmailHtml({
-        lang, brandName: brand.name, customerName: customerInfo?.name,
-        bookingRef: finalBookingRef, installDate, address: property?.address,
-        eq: selectedEq, total, paymentMethod: paymentInfoArg?.method, isFinancing,
-      });
+  const quoteEmailHtml = (eq, info, deposit) => {
+    const total = quoteTotal(eq, quote);
+    return buildQuoteEmailHtml({
+      lang, brandName: brand.name, customerName: info?.name, address: property?.address,
+      eq, total, monthly: Math.round(total / 60), deposit,
+      lines: quoteLines(eq, catalog, lang), warranties: warrantyLines(eq, lang), rooftop: Plan.isRooftop(answers.installLocation),
+    });
+  };
 
-      if (customerInfo?.email) {
-        fetch("/api/send-email", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: customerInfo.email,
-            subject: lang === "es" ? `Confirmación de Reserva - ${finalBookingRef}` : `Booking Confirmed - ${finalBookingRef}`,
-            htmlContent: confirmHtml,
+  // "Email This Quote" → Almost There (email mode) → this.
+  const emailQuoteNow = async (info) => {
+    const eq = emailEq;
+    const total = quoteTotal(eq, quote);
+    const r = await fetch("/api/send-email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: info.email.trim(),
+        subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
+        htmlContent: quoteEmailHtml(eq, info, Math.round(total * 0.5)),
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(lang === "es" ? "No pudimos enviar el correo. Intente de nuevo en un momento." : (data.error ? "We couldn't send the email right now. Please try again in a moment." : "Could not send — please try again."));
+    setCustomerInfo(info);
+    saveOption(eq);
+    const id = await recordQuote(eq, info, "emailed");
+    notifyOffice(`Quote emailed — ${info.name}`, [
+      ["Name", info.name], ["Email", info.email], ["Phone", info.phone], ["Contact by", info.contactPref],
+      ["Address", property?.address], ["System", eqSummary(eq)], ["Price", money(total)], ["Quote #", id ? String(id) : ""],
+    ]);
+  };
+
+  const finalizeBooking = async (pay) => {
+    const total = quoteTotal(selectedEq, quote);
+    const isFinancing = pay?.method === "ftl" || pay?.method === "microf";
+    const deposit = isFinancing ? 0 : Math.round(total * 0.5);
+    let ref = null;
+    try {
+      const row = await rpc("create_booking", { p: {
+        quote_id: quoteId, customer_name: customerInfo?.name || null, customer_email: customerInfo?.email || null,
+        customer_phone: customerInfo?.phone || null, contact_preference: customerInfo?.contactPref || null,
+        install_date: installDate || null, install_address: property?.address || null, payment_method: pay?.method || null,
+        payment_status: isFinancing ? "pending" : (pay?.status === "processing" ? "deposit_processing" : "deposit_paid"),
+        deposit_amount: deposit, deposit_paid_at: !isFinancing && pay?.status === "succeeded" ? new Date().toISOString() : null,
+        stripe_payment_intent: pay?.intentId || null,
+        slot_held_until: new Date(Date.now() + (pay?.holdHours || 0) * 3600000).toISOString(),
+        hoa_flag: answers.hoa === "yes", crane_flag: Plan.isRooftop(answers.installLocation),
+        booking_status: "confirmed", financing_company: isFinancing ? pay.method : null,
+        financing_status: isFinancing ? "pending" : "not_applicable", financing_applied_at: isFinancing ? new Date().toISOString() : null,
+        equipment_summary: eqSummary(selectedEq), total_price: total,
+      } });
+      ref = row?.booking_reference || null;
+    } catch (e) { console.error("Booking creation error:", e); }
+    const finalRef = ref || `ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`;
+    setBookingRef(finalRef);
+
+    notifyOffice(`New booking ${finalRef} — ${customerInfo?.name || ""}`, [
+      ["Booking", finalRef + (ref ? "" : " (NOT SAVED — check the app database)")], ["Name", customerInfo?.name], ["Email", customerInfo?.email],
+      ["Phone", customerInfo?.phone], ["Contact by", customerInfo?.contactPref], ["Address", property?.address],
+      ["Install date", installDate], ["System", eqSummary(selectedEq)], ["Total", money(total)],
+      ["Payment", `${pay?.method || ""}${pay?.status ? " (" + pay.status + ")" : ""}`], ["Deposit", isFinancing ? "None (financing)" : money(deposit)],
+      ["Stripe payment", pay?.intentId || ""], ["Rooftop", Plan.isRooftop(answers.installLocation) ? "Yes — crane/rigging $800–$2,000 to be approved by customer" : ""],
+      ["HOA", answers.hoa === "yes" ? "Yes" : ""],
+    ]);
+
+    if (customerInfo?.email) {
+      fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: customerInfo.email,
+          subject: lang === "es" ? `Confirmación de Reserva - ${finalRef}` : `Booking Confirmed - ${finalRef}`,
+          htmlContent: buildConfirmationEmailHtml({
+            lang, brandName: brand.name, customerName: customerInfo?.name, bookingRef: finalRef, installDate,
+            address: property?.address, eq: selectedEq, total, paymentMethod: pay?.method, isFinancing,
           }),
-        }).catch(e => console.error("Confirmation email error:", e));
-
-        // Also send the full detailed estimate (same template as "Email This Quote" on Screen 15)
-        // so the customer automatically has their complete system specs and pricing on file.
-        const monthly = Math.round(total / 60);
-        const detailedHtml = buildQuoteEmailHtml({
-          lang, brandName: brand.name, customerName: customerInfo?.name, address: property?.address,
-          eq: selectedEq, total, monthly, deposit: isFinancing ? null : Math.round(total * 0.5),
-        });
-        fetch("/api/send-email", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: customerInfo.email,
-            subject: lang === "es" ? `Su Cotización Detallada - ${brand.name}` : `Your Detailed Estimate - ${brand.name}`,
-            htmlContent: detailedHtml,
-          }),
-        }).catch(e => console.error("Detailed estimate email error:", e));
-      }
-
-      if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
-        const formattedDate = installDate ? new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
-        const smsBody = lang === "es"
-          ? `${brand.name}: Reserva confirmada! Ref: ${finalBookingRef}. Instalacion: ${formattedDate}. Le llamaremos pronto para confirmar detalles.`
-          : `${brand.name}: Booking confirmed! Ref: ${finalBookingRef}. Install date: ${formattedDate}. We'll call soon to confirm details.`;
-        fetch("/api/send-sms", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: customerInfo.phone, message: smsBody }),
-        }).catch(e => console.error("Confirmation SMS error:", e));
-      }
-    } catch(e) {
-      console.error("Booking creation error:", e);
-      setBookingRef(`ACB-${new Date().getFullYear()}-${String(Math.floor(Math.random()*99999)).padStart(5,"0")}`);
+        }),
+      }).catch(e => console.error("Confirmation email error:", e));
+      fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: customerInfo.email,
+          subject: lang === "es" ? `Su Cotización Detallada - ${brand.name}` : `Your Detailed Estimate - ${brand.name}`,
+          htmlContent: quoteEmailHtml(selectedEq, customerInfo, isFinancing ? null : deposit),
+        }),
+      }).catch(e => console.error("Detailed estimate email error:", e));
     }
-
+    if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
+      const d = installDate ? new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+      const body = lang === "es"
+        ? `${brand.name}: Reserva confirmada! Ref: ${finalRef}. Instalacion: ${d}. Le llamaremos pronto para confirmar detalles.`
+        : `${brand.name}: Booking confirmed! Ref: ${finalRef}. Install date: ${d}. We'll call soon to confirm details.`;
+      fetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: customerInfo.phone, message: body }) })
+        .catch(e => console.error("Confirmation SMS error:", e));
+    }
     go("confirmation");
   };
 
-  // Build a full snapshot of current state for saving/auto-save
+  // Save/resume snapshot
   const buildStateSnapshot = () => ({
-    lang, screen, property, answers, quote, brandFamily,
-    selectedBrand, selectedEq, customerInfo,
+    lang, screen, property, answers, quote, brandFamily, selectedBrands, selectedEq, savedOptions, customerInfo, quoteId,
   });
-
-  // Restore state from a snapshot (used by both localStorage resume and email link resume)
   const restoreFromSnapshot = (snap) => {
     if (!snap) return;
     if (snap.lang) setLang(snap.lang);
     if (snap.property) setProperty(snap.property);
     if (snap.answers) setAnswers(snap.answers);
-    if (snap.quote) setQuote(snap.quote);
-    if (snap.brandFamily) setBrandFamily(snap.brandFamily);
-    if (snap.selectedBrand) setSelectedBrand(snap.selectedBrand);
-    if (snap.selectedEq) setSelectedEq(snap.selectedEq);
+    if (snap.quote && snap.quote.tons) setQuote(snap.quote);
+    if (snap.brandFamily && FAMILY_KEYS.includes(snap.brandFamily)) setBrandFamily(snap.brandFamily);
+    if (Array.isArray(snap.selectedBrands)) setSelectedBrands(snap.selectedBrands);
+    if (snap.selectedEq && typeof snap.selectedEq.id === "string") setSelectedEq(snap.selectedEq);
+    if (Array.isArray(snap.savedOptions)) setSavedOptions(snap.savedOptions.filter(e => typeof e.id === "string"));
     if (snap.customerInfo) setCustomerInfo(snap.customerInfo);
-    if (snap.screen) setScreen(snap.screen);
+    if (snap.quoteId) setQuoteId(snap.quoteId);
+    // Sessions saved by the previous version of the app restart at the system-type question.
+    const known = ["s2", "s3", "s4", "sHome", "s5", "s6", "s7", "s8", "s9", "s8b", "s11", "s12", "s13", "s14", "s15", "savedQuotes", "s16", "schedule", "checkout"];
+    if (snap.screen && known.includes(snap.screen) && (snap.quote?.tons || ["s2", "s3", "s4", "sHome", "s5", "s6", "s7", "s8", "s9", "s8b"].includes(snap.screen))) setScreen(snap.screen);
+    else if (snap.property) setScreen("s4");
   };
 
-  // Auto-save to localStorage on every meaningful state change (after landing screen)
-  // Skip entirely on s1 (nothing to save) and on confirmation (booking is done — clear instead)
   useEffect(() => {
-    if (!resumeChecked) return;
-    if (screen === "s1") return;
+    if (!resumeChecked || screen === "s1") return;
     try {
-      if (screen === "confirmation") {
-        localStorage.removeItem("acc_progress");
-      } else {
-        localStorage.setItem("acc_progress", JSON.stringify(buildStateSnapshot()));
-      }
-    } catch(e) {}
-  }, [screen, property, answers, quote, brandFamily, selectedBrand, selectedEq, customerInfo, resumeChecked]);
+      if (screen === "confirmation") localStorage.removeItem("acc_progress");
+      else localStorage.setItem("acc_progress", JSON.stringify(buildStateSnapshot()));
+    } catch (e) {}
+  }, [screen, property, answers, quote, brandFamily, selectedBrands, selectedEq, savedOptions, customerInfo, quoteId, resumeChecked]);
 
-  // On first load: check for email-link resume token, then fall back to localStorage
   useEffect(() => {
     const checkResume = async () => {
       const params = new URLSearchParams(window.location.search);
       const resumeToken = params.get("resume");
-
       if (resumeToken) {
         try {
           const r = await fetch(`/api/resume-progress?token=${resumeToken}`);
           const data = await r.json();
           if (data.stateSnapshot && !data.expired) {
             restoreFromSnapshot(data.stateSnapshot);
-            // Clean the URL so refreshing doesn't re-trigger this
             window.history.replaceState({}, "", window.location.pathname);
             setResumeChecked(true);
             return;
           }
-        } catch(e) { console.warn("Resume link error:", e); }
+        } catch (e) { console.warn("Resume link error:", e); }
       }
-
-      // Fall back to localStorage auto-save
       try {
         const saved = localStorage.getItem("acc_progress");
-        if (saved) {
-          const snap = JSON.parse(saved);
-          restoreFromSnapshot(snap);
-        }
-      } catch(e) {}
+        if (saved) restoreFromSnapshot(JSON.parse(saved));
+      } catch (e) {}
       setResumeChecked(true);
     };
     checkResume();
   }, []);
 
-  // Actually save progress + send resume link email
   const saveProgressNow = async (email, name) => {
-    const snapshot = buildStateSnapshot();
     const r = await fetch("/api/save-progress", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name, stateSnapshot: snapshot, lang }),
+      body: JSON.stringify({ email, name, stateSnapshot: buildStateSnapshot(), lang }),
     });
     const data = await r.json();
     if (!data.success) throw new Error(data.error || "Save failed");
-    if (!customerInfo?.email) {
-      setCustomerInfo(p => ({ ...(p || {}), email, name: name || p?.name }));
-    }
+    if (!customerInfo?.email) setCustomerInfo(p => ({ ...(p || {}), email, name: name || p?.name }));
   };
 
-  // Build quote object with adder calculation
+  // Build the quote context (size + adders) once the questions are answered.
   const buildQuote = useCallback(async (prop, curAnswers) => {
+    setQuoteFailed(false);
     try {
-      const { total: adderTotal } = await QuoteEngine.calcAdders(curAnswers);
-      const homeType = curAnswers.detectedHomeType || prop.type || "site-built";
-      const tons = QuoteEngine.calcTonnage(prop.sqft, curAnswers.coolWell, homeType);
-      const systemTypes = QuoteEngine.getSystemTypes(curAnswers.systemType, null, homeType);
-
-      console.log("buildQuote:", { homeType, tons, systemTypes, sqft: prop.sqft });
-
-      // Fetch all equipment for price range
-      let allEquipment = [];
-      for (const st of systemTypes) {
-        const eq = await QuoteEngine.fetchEquipment(st, tons, null, false, homeType);
-        console.log(`  fetched ${eq.length} rows for system_type=${st}, tons=${tons}`);
-        allEquipment = [...allEquipment, ...eq];
-      }
-
-      console.log("buildQuote total equipment found:", allEquipment.length);
-      setQuote({ property: prop, answers: curAnswers, adderTotal, allEquipment, tons });
+      const [{ total: adderTotal, applied }, cat] = await Promise.all([QuoteEngine.calcAdders(curAnswers), Catalog.load()]);
+      setCatalog(cat);
+      setQuote({ answers: curAnswers, adderTotal, applied, tons: Plan.tons(prop, curAnswers) });
     } catch (err) {
       console.error("buildQuote failed:", err);
       setQuote(null);
+      setQuoteFailed(true);
     }
   }, []);
+
+  const ready = quote && catalog;
+  const detectedKind = (() => {
+    const d = answers.detectedHomeType;
+    return d === "manufactured" ? "mobile" : d === "apartment" ? "apt" : d === "site-built" ? "sitebuilt" : null;
+  })();
 
   return (
     <div style={{ minHeight: "100vh", background: "#b0d8ec" }}>
       <FontLoader />
       <LangToggle lang={lang} setLang={setLang} />
       {showCG && <ComfortGuide lang={lang} brand={brand} t={t} onClose={() => setShowCG(false)}
-        customerContext={{
-          screen, property, answers,
-          tons: quote?.tons, adderTotal: quote?.adderTotal,
-          brandFamily, selectedEq,
-        }} />}
+        customerContext={{ screen, property, answers, tons: quote?.tons, adderTotal: quote?.adderTotal, brandFamily: brandFamily ? Plan.familyLabel(brandFamily, "en") : null, selectedEq }} />}
 
       {showSaveModal && (
-        <SaveProgressModal t={t} lang={lang} customerInfo={customerInfo}
-          onClose={() => setShowSaveModal(false)}
-          onSaved={saveProgressNow} />
+        <SaveProgressModal t={t} lang={lang} customerInfo={customerInfo} onClose={() => setShowSaveModal(false)} onSaved={saveProgressNow} />
       )}
 
-      {screen === "s1" && <S1_Landing brand={brand} t={t} onStart={() => go("s2")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s1" && <S1_Landing {...common} onStart={() => go("s2")} />}
 
-      {screen === "s2" && <S2_Address brand={brand} t={t}
-        onFound={p => { setProperty(p); go("s3"); }}
-        onBack={() => go("s1")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s2" && <S2_Address {...common} onFound={p => { setProperty(p); go("s3"); }} onBack={() => go("s1")} />}
 
-      {screen === "s3" && <S3_ConfirmHome brand={brand} t={t} lang={lang} property={property}
+      {screen === "s3" && <S3_ConfirmHome {...common} property={property}
         onConfirm={(verified) => {
           if (verified) {
             setProperty(verified);
-            // Auto-detect home type from property data
-            const type = verified.type || "";
-            const isManufactured = type.toLowerCase().includes("manufactured") || 
-                                   type.toLowerCase().includes("mobile");
-            const isApt = type.toLowerCase().includes("condo") || 
-                          type.toLowerCase().includes("apartment") ||
-                          type.toLowerCase().includes("multi");
-            setAnswers(p => ({ 
-              ...p, 
-              detectedHomeType: isManufactured ? "manufactured" : isApt ? "apartment" : "site-built",
-              detectedSqft: verified.sqft || p.detectedSqft,
-            }));
+            const type = (verified.type || "").toLowerCase();
+            const isManufactured = type.includes("manufactured") || type.includes("mobile");
+            const isApt = type.includes("condo") || type.includes("apartment") || type.includes("multi");
+            setAnswers(p => ({ ...p, detectedHomeType: isManufactured ? "manufactured" : isApt ? "apartment" : "site-built", detectedSqft: verified.sqft || p.detectedSqft }));
           }
           go("s4");
         }}
-        onEdit={() => go("s2")} onBack={() => go("s2")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+        onEdit={() => go("s2")} onBack={() => go("s2")} />}
 
-      {screen === "s4" && <S4_Intent brand={brand} t={t}
+      {screen === "s4" && <S4_Intent {...common}
         onSelect={id => {
           if (id === "guide") { setShowCG(true); return; }
-          if (id === "minisplit") { alert("Mini-split path — Phase 2"); return; }
-          go("s5");
+          if (id === "minisplit") { go("ms1"); return; }
+          setMsChoice(null);
+          go("sHome");
         }}
-        onBack={() => go("s3")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s3")} />}
 
-      {screen === "s5" && <S5_CoolWell brand={brand} t={t}
-        onSelect={v => { ans("coolWell", v); go("s6"); }}
-        onBack={() => go("s4")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "sHome" && <S_HomeType {...common} detected={answers.homeKind || detectedKind}
+        onSelect={v => { ans("homeKind", v); go("s5"); }} onBack={() => go("s4")} />}
 
-      {screen === "s6" && <S6_FloodZone brand={brand} t={t}
-        onSelect={v => { ans("floodZone", v); go("s7"); }}
-        onBack={() => go("s5")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s5" && <S5_CoolWell {...common} onSelect={v => { ans("coolWell", v); go("s6"); }} onBack={() => go("sHome")} />}
+      {screen === "s6" && <S6_FloodZone {...common} onSelect={v => { ans("floodZone", v); go("s7"); }} onBack={() => go("s5")} />}
+      {screen === "s7" && <S7_SystemAge {...common} onSelect={v => { ans("systemAge", v); go("s8"); }} onBack={() => go("s6")} />}
+      {screen === "s8" && <S8_HOA {...common} onSelect={v => { ans("hoa", v); go("s9"); }} onBack={() => go("s7")} />}
+      {screen === "s9" && <S9_SystemType {...common} onSelect={v => { ans("systemType", v); go("s8b"); }} onBack={() => go("s8")} />}
 
-      {screen === "s7" && <S7_SystemAge brand={brand} t={t}
-        onSelect={v => { ans("systemAge", v); go("s8"); }}
-        onBack={() => go("s6")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
-
-      {screen === "s8" && <S8_HOA brand={brand} t={t}
-        onSelect={v => { ans("hoa", v); go("s8b"); }}
-        onBack={() => go("s7")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
-
-      {screen === "s8" && <S8_HOA brand={brand} t={t}
-        onSelect={v => { ans("hoa", v); go("s9"); }}
-        onBack={() => go("s7")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
-
-      {screen === "s9" && <S9_SystemType brand={brand} t={t}
+      {screen === "s8b" && <S_InstallLocation {...common} systemType={answers.systemType}
         onSelect={v => {
-          ans("systemType", v);
-          go("s8b");
-        }}
-        onBack={() => go("s8")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
-
-      {screen === "s8b" && <S8b_InstallLocation brand={brand} t={t} lang={lang} systemType={answers.systemType}
-        onSelect={v => {
-          const newAnswers = { ...answers, installLocation: v };
+          const upstairs = /^ah_(attic|ceiling)/.test(v);
+          const newAnswers = { ...answers, installLocation: v, buildingFloor: answers.homeKind === "multistory" && upstairs ? "second" : null };
           setAnswers(newAnswers);
+          setQuote(null);
+          setBrandFamily(null); setSelectedBrands([]);
           go("s10");
           buildQuote(property, newAnswers);
         }}
-        onBack={() => go("s9")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go("s9")} />}
 
-      {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!quote} />}
+      {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!ready} />}
 
-      {screen === "s11" && quote && <S11_EstimateReady brand={brand} t={t} quote={quote}
-        onChooseFamily={() => go("s12")}
-        onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
-      {screen === "s11" && !quote && (
-        <Shell t={t} brand={brand} onCG={() => setShowCG(true)} onStartOver={handleStartOver} showBack onBack={() => go("s9")}>
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
-            <h2 style={{ fontWeight: 900, color: C.navy, marginBottom: 8 }}>We hit a snag</h2>
-            <p style={{ color: "#64748b", marginBottom: 24 }}>We could not load your estimate. This is usually temporary — please try again.</p>
-            <BlueBtn onClick={() => { setScreen("s9"); }} style={{ maxWidth: 240 }}>← Try Again</BlueBtn>
-          </div>
+      {screen === "s11" && ready && <S_Recommendation {...common} quote={quote} catalog={catalog} onChooseFamily={() => go("s12")} onBack={() => go("s8b")} />}
+      {["s11", "s12", "s13", "s14", "s15", "savedQuotes"].includes(screen) && !ready && (
+        <Shell t={t} brand={brand} onCG={cg} onStartOver={handleStartOver} showBack onBack={() => go("s9")}>
+          {catalogError || quoteFailed || !property || !answers.installLocation ? (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+              <h2 style={{ fontWeight: 900, color: C.navy, marginBottom: 8 }}>{L(lang, "We hit a snag", "Tuvimos un problema")}</h2>
+              <p style={{ color: "#64748b", marginBottom: 24 }}>{L(lang, "We could not load your estimate. This is usually temporary — please try again.", "No pudimos cargar su estimado. Suele ser temporal — intente de nuevo.")}</p>
+              <BlueBtn onClick={() => { setCatalogError(false); Catalog.load().then(setCatalog).catch(() => setCatalogError(true)); if (property && answers.installLocation) buildQuote(property, answers); }} style={{ maxWidth: 240 }}>
+                ← {L(lang, "Try Again", "Intentar de Nuevo")}
+              </BlueBtn>
+            </div>
+          ) : <CenteredSpinner text={L(lang, "Loading…", "Cargando…")} />}
         </Shell>
       )}
 
-      {screen === "s12" && <S12_BrandFamily brand={brand} t={t} quote={quote}
-        onSelect={f => { setBrandFamily(f); go("s13"); }}
-        onBack={() => go("s11")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s12" && ready && <S_BrandFamily {...common} quote={quote} catalog={catalog}
+        onSelect={f => { if (f !== brandFamily) setSelectedBrands([]); setBrandFamily(f); go("s13"); }} onBack={() => go("s11")} />}
 
-      {screen === "s13" && <S13_ChooseBrand brand={brand} t={t} quote={quote} brandFamily={brandFamily}
-        onSelect={b => { setSelectedBrand(b); go("s14"); }}
-        onBack={() => go("s12")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s13" && ready && <S_ChooseBrands {...common} quote={quote} catalog={catalog} fam={brandFamily} selected={selectedBrands}
+        onToggle={k => setSelectedBrands(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k])}
+        onContinue={keys => { setSelectedBrands(keys); go("s14"); }} onBack={() => go("s12")} />}
 
-      {screen === "s14" && <S14_Equipment brand={brand} t={t} quote={quote} lang={lang}
-        brandFamily={brandFamily} selectedBrand={selectedBrand}
-        savedOptions={savedOptions} onToggleSaved={toggleSavedOption} onReviewSaved={() => go("savedReview")}
-        onSelect={eq => { setSelectedEq(eq); go("s15"); }}
-        onCompareTiers={() => go("s12")}
-        onBack={() => go("s13")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s14" && ready && <S_SelectedRecs {...common} quote={quote} catalog={catalog} fam={brandFamily} brandKeys={selectedBrands}
+        savedCount={savedOptions.length} onSavedQuotes={() => go("savedQuotes")}
+        onPick={eq => { setSelectedEq(eq); go("s15"); }} onChangeSystem={() => go("s12")} onBack={() => go("s13")} />}
 
-      {screen === "savedReview" && (
-        <ReviewSavedOptions brand={brand} t={t} lang={lang} quote={quote}
-          savedOptions={savedOptions} onToggleSaved={toggleSavedOption}
-          onSelect={eq => { setSelectedEq(eq); go("s15"); }}
-          onBack={() => go("s14")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} />
-      )}
-      {screen === "s15" && selectedEq && <S15_SystemDetail brand={brand} t={t} quote={quote} lang={lang}
-        selectedEq={selectedEq}
-        onApprove={() => go("s16")}
-        onBack={() => go("s14")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+      {screen === "s15" && ready && selectedEq && <S_QuoteDetail {...common} quote={quote} catalog={catalog} eq={selectedEq}
+        saved={isSaved(selectedEq)} savedCount={savedOptions.length}
+        onChoose={() => { setFormMode("schedule"); setFormReturn("s15"); go("s16"); }}
+        onEmail={() => { setEmailEq(selectedEq); setFormMode("email"); setFormReturn("s15"); go("s16"); }}
+        onSaveAndMore={() => { saveOption(selectedEq); go(selectedBrands.length ? "s14" : "s12"); }}
+        onSavedQuotes={() => go("savedQuotes")}
+        onBack={() => go(selectedBrands.length ? "s14" : "savedQuotes")} />}
 
-      {screen === "s16" && <S16_PersonalInfo brand={brand} t={t}
-        onContinue={info => { setCustomerInfo(info); go("schedule"); }}
+      {screen === "savedQuotes" && ready && <S_SavedQuotes {...common} quote={quote} saved={savedOptions}
+        onOpen={eq => { setSelectedEq(eq); go("s15"); }}
+        onEmail={eq => { setEmailEq(eq); setFormMode("email"); setFormReturn("savedQuotes"); go("s16"); }}
+        onRemove={removeOption} onMore={() => go("s12")} onBack={() => go(selectedEq ? "s15" : "s14")} />}
+
+      {screen === "s16" && <S_AlmostThere {...common} mode={formMode} initial={customerInfo} emailEq={emailEq}
+        onEmailSend={emailQuoteNow}
+        onAfterEmail={() => go(savedOptions.length ? "savedQuotes" : formReturn)}
+        onContinue={async info => {
+          setCustomerInfo(info);
+          const eq = formMode === "email" ? emailEq : selectedEq;
+          if (eq) setSelectedEq(eq);
+          const id = await recordQuote(eq, info, "approved");
+          if (id) setQuoteId(id);
+          go("schedule");
+        }}
         onViewTerms={() => go("terms")} onViewPrivacy={() => go("privacy")}
-        onBack={() => go("s15")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />}
+        onBack={() => go(formReturn)} />}
 
-      {screen === "terms" && (
-        <LegalDocScreen brand={brand} t={t} title="Terms of Service" sections={TERMS_OF_SERVICE_SECTIONS}
-          onBack={() => go("s16")} onCG={() => setShowCG(true)} />
-      )}
-
-      {screen === "privacy" && (
-        <LegalDocScreen brand={brand} t={t} title="Privacy Policy" sections={PRIVACY_POLICY_SECTIONS}
-          onBack={() => go("s16")} onCG={() => setShowCG(true)} />
-      )}
+      {screen === "terms" && <LegalDocScreen brand={brand} t={t} title="Terms of Service" sections={TERMS_OF_SERVICE_SECTIONS} onBack={() => go(msChoice ? "msRequest" : "s16")} onCG={cg} />}
+      {screen === "privacy" && <LegalDocScreen brand={brand} t={t} title="Privacy Policy" sections={PRIVACY_POLICY_SECTIONS} onBack={() => go(msChoice ? "msRequest" : "s16")} onCG={cg} />}
 
       {screen === "schedule" && (
-        <CheckoutCalendar brand={brand} t={t} lang={lang} paymentInfo={paymentInfo}
+        <CheckoutCalendar {...common} paymentInfo={paymentInfo}
           onConfirm={async (date) => {
             setInstallDate(date.available_date);
-            // Hold the slot immediately upon date selection, before payment.
-            // A generous default hold (48hrs) protects the slot while they complete payment/financing.
-            try {
-              await fetch(`${SUPABASE_URL}/rest/v1/availability?available_date=eq.${date.available_date}`, {
-                method: "PATCH",
-                headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
-                body: JSON.stringify({ booked_slots: (date.booked_slots || 0) + 1 }),
-              });
-            } catch(e) { console.error("Slot hold error:", e); }
+            try { await rpc("hold_install_slot", { p_date: date.available_date }); } catch (e) { console.error("Slot hold error:", e); }
             go("checkout");
           }}
-          onBack={() => go("s16")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
+          onBack={() => go("s16")} />
       )}
 
       {screen === "checkout" && selectedEq && quote && (
-        <CheckoutPayment brand={brand} t={t} quote={quote} selectedEq={selectedEq} customerInfo={customerInfo}
-          onSelectMethod={method => go(`pay_${method}`)}
-          onBack={() => go("schedule")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
+        <CheckoutPayment {...common} quote={quote} selectedEq={selectedEq} customerInfo={customerInfo}
+          onSelectMethod={method => go(`pay_${method}`)} onBack={() => go("schedule")} />
       )}
 
-      {screen === "pay_card" && selectedEq && (
-        <CheckoutCard brand={brand} t={t}
-          deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
-          customerInfo={customerInfo}
-          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
+      {(screen === "pay_card" || screen === "pay_ach") && selectedEq && quote && (
+        <CheckoutStripe key={screen} {...common} method={screen === "pay_ach" ? "ach" : "card"}
+          deposit={Math.round(quoteTotal(selectedEq, quote) * 0.5)} customerInfo={customerInfo}
+          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }} onBack={() => go("checkout")} />
       )}
 
-      {screen === "pay_ach" && selectedEq && (
-        <CheckoutACH brand={brand} t={t}
-          deposit={Math.round(((selectedEq.installation_price || 0) + (quote.adderTotal || 0)) * 0.5)}
-          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
+      {screen === "pay_ftl" && selectedEq && quote && (
+        <CheckoutFTL {...common} total={quoteTotal(selectedEq, quote)} customerInfo={customerInfo}
+          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }} onBack={() => go("checkout")} />
       )}
 
-      {screen === "pay_ftl" && selectedEq && (
-        <CheckoutFTL brand={brand} t={t}
-          total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
-          customerInfo={customerInfo}
-          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
-      )}
-
-      {screen === "pay_microf" && selectedEq && (
-        <CheckoutMicrof brand={brand} t={t}
-          total={(selectedEq.installation_price || 0) + (quote.adderTotal || 0)}
-          customerInfo={customerInfo}
-          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }}
-          onBack={() => go("checkout")} onCG={() => setShowCG(true)} onStartOver={handleStartOver} onSave={() => setShowSaveModal(true)} />
+      {screen === "pay_microf" && selectedEq && quote && (
+        <CheckoutMicrof {...common} total={quoteTotal(selectedEq, quote)} customerInfo={customerInfo}
+          onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }} onBack={() => go("checkout")} />
       )}
 
       {screen === "confirmation" && (
         <CheckoutConfirmation brand={brand} t={t} bookingRef={bookingRef} installDate={installDate} customerInfo={customerInfo}
-          onDone={() => {
-            try { localStorage.removeItem("acc_progress"); } catch(e) {}
-            setScreen("s1"); setProperty(null); setAnswers({}); setQuote(null);
-            setBrandFamily(null); setSelectedBrand(null); setSelectedEq(null);
-            setCustomerInfo(null); setPaymentInfo(null); setBookingRef(null); setInstallDate(null);
-          }} />
+          onDone={handleStartOver} />
       )}
+
+      {/* ── Mini-split path ── */}
+      {screen === "ms1" && <S_MiniSplitStart {...common}
+        onSelect={id => { setMsChoice(id); setMsRooms([]); go(id === "4+" ? "msRequest" : ["1", "2", "3"].includes(id) ? "ms2" : "msRequest"); }}
+        onBack={() => go("s4")} />}
+      {screen === "ms2" && <S_MiniSplitRooms {...common} count={msChoice} onContinue={r => { setMsRooms(r); go("msRequest"); }} onBack={() => go("ms1")} />}
+      {screen === "msRequest" && <S_MiniSplitRequest {...common} choice={msChoice} rooms={msRooms} property={property}
+        onDone={handleStartOver} onBack={() => go(["1", "2", "3"].includes(msChoice) ? "ms2" : "ms1")}
+        onViewTerms={() => go("terms")} onViewPrivacy={() => go("privacy")} />}
     </div>
   );
 }
-
-
-
-

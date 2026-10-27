@@ -29,7 +29,23 @@ export default async function handler(req, res) {
     
     // Restrict payment method types based on what was requested
     if (paymentMethodType === 'ach') {
+      // ACH Direct Debit: the customer links their bank (instant login or micro-deposits).
+      // A Stripe Customer is attached so the bank mandate and receipts have an owner.
       params.append('payment_method_types[]', 'us_bank_account');
+      params.append('payment_method_options[us_bank_account][verification_method]', 'automatic');
+      if (customerEmail || customerName) {
+        const cust = new URLSearchParams();
+        if (customerEmail) cust.append('email', customerEmail);
+        if (customerName) cust.append('name', customerName);
+        cust.append('metadata[source]', 'air-care-connect-app');
+        const cr = await fetch('https://api.stripe.com/v1/customers', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${STRIPE_SECRET_KEY}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: cust.toString(),
+        });
+        const cd = await cr.json();
+        if (cr.ok && cd.id) params.append('customer', cd.id);
+      }
     } else {
       params.append('payment_method_types[]', 'card');
     }
