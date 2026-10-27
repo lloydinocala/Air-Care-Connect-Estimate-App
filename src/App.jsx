@@ -674,7 +674,7 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
 // ── SHARED EMAIL TEMPLATE ──────────────────────────────────────────────────────
 // Builds a polished, branded HTML quote email used by both Comfort Guide
 // and the Screen 15 "Email This Quote" button — single source of truth.
-function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total, monthly, deposit, lines, warranties, rooftop }) {
+function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total, monthly, deposit, lines, warranties, rooftop, links, booked }) {
   const isEs = lang === "es";
   const accent = "#00B0F0";
   const navy = "#163E64";
@@ -813,9 +813,17 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
         </table>
 
         <!-- CTA -->
+        ${booked ? "" : links ? `
+        <a href="${links.approve}" style="display:block; text-align:center; background:${accent}; color:#ffffff; padding:15px 24px; border-radius:50px; text-decoration:none; font-weight:900; font-size:16px; margin-bottom:10px;">
+          ${isEs ? "Aprobar y Elegir Mi Fecha de Instalación" : "Approve & Choose My Install Date"}
+        </a>
+        <a href="${links.view}" style="display:block; text-align:center; background:#ffffff; color:${accent}; border:2px solid ${accent}; padding:13px 24px; border-radius:50px; text-decoration:none; font-weight:800; font-size:15px;">
+          ${isEs ? "Ver Mi Cotización" : "View My Quote"}
+        </a>
+        <p style="color:#94a3b8; font-size:11px; text-align:center; margin:10px 0 0;">${isEs ? "Este enlace es personal — abre exactamente esta cotización con su precio garantizado." : "This link is personal — it opens exactly this quote at its guaranteed price."}</p>` : `
         <a href="https://systemestimate.air-careconnect.com" style="display:block; text-align:center; background:${accent}; color:#ffffff; padding:14px 24px; border-radius:50px; text-decoration:none; font-weight:800; font-size:15px;">
           ${ctaText}
-        </a>
+        </a>`}
       </div>
 
       <!-- Footer -->
@@ -2226,6 +2234,7 @@ function S10_Preparing({ brand, t, onDone, quoteReady }) {
 // never returned, so a brand appears here the moment it is priced in Journey.
 // ═════════════════════════════════════════════════════════════════════════════
 const CATALOG_URL = "https://gatndtsmjrxdgxquvydw.supabase.co/functions/v1/estimate-catalog";
+const INSTALL_DAYS_URL = "https://gatndtsmjrxdgxquvydw.supabase.co/functions/v1/estimate-booking?action=days";
 
 const L = (lang, en, es) => (lang === "es" ? es : en);
 
@@ -3428,10 +3437,15 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
     const load = async () => {
       setLoading(true);
       try {
-        // Earliest bookable day is tomorrow (local time) — never a past date or today.
-        const tm = new Date(); tm.setDate(tm.getDate() + 1);
-        const from = `${tm.getFullYear()}-${String(tm.getMonth() + 1).padStart(2, "0")}-${String(tm.getDate()).padStart(2, "0")}`;
-        const data = await sb.get("availability", `is_open=eq.true&available_date=gte.${from}&order=available_date.asc`);
+        // Install days come from Journey: business hours, holidays, Booking Rules → Online system
+        // installs (installs per day, days, minimum notice) and install jobs already on the calendar.
+        const r = await fetch(INSTALL_DAYS_URL);
+        const body = await r.json();
+        const data = (Array.isArray(body?.days) ? body.days : []).map(d => ({ available_date: d.available_date, booked_slots: d.booked ?? 0, max_slots: d.max_slots ?? 1 }));
+        if (data.length) {
+          const first = new Date(data[0].available_date + "T00:00:00"), now0 = new Date();
+          setMonthOffset(Math.max(0, (first.getFullYear() - now0.getFullYear()) * 12 + first.getMonth() - now0.getMonth()));
+        }
         // Permanent rule: never show Sundays as bookable, even if one is accidentally
         // marked open in the database. day 0 = Sunday in JS Date.
         const noSundays = data.filter(d => new Date(d.available_date + "T00:00:00").getDay() !== 0);
@@ -3660,6 +3674,7 @@ export default function App() {
   const [showCG, setShowCG] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [resumeChecked, setResumeChecked] = useState(false);
+  const [linkNotice, setLinkNotice] = useState(null);
 
   // Contractor name comes from Journey (white-label); Spanish keeps the Aire Azul brand.
   const brand = lang === "en" && catalog?.org?.name ? { ...BRAND.en, name: catalog.org.name } : BRAND[lang];
@@ -3693,7 +3708,7 @@ export default function App() {
     if (!eq) return null;
     try {
       const total = quoteTotal(eq, quote);
-      const row = await rpc("create_quote", { p: {
+      const row = await rpc("create_quote_v2", { p: {
         property_address: property?.address || null, property_sqft: property?.sqft || null,
         property_type: answers.homeKind || null, system_type: eq.system_type, home_type: answers.homeKind || null,
         cooling_adequate: answers.coolWell || null, flood_zone: answers.floodZone === "yes", system_age: answers.systemAge || null,
@@ -3703,9 +3718,15 @@ export default function App() {
         brand_selected: eq.brandName || eq.outdoor_brand, equipment_summary: eqSummary(eq),
         customer_name: info?.name || null, customer_email: info?.email || null, customer_phone: info?.phone || null,
         language: lang, quote_status: status || "pending",
+        state: { v: 1, eq, property, answers, adderTotal: quote?.adderTotal || 0, tons: quote?.tons, lang, customerInfo: info || null },
       } });
-      return row?.id || null;
+      return row || null; // { id, quote_reference, resume_token }
     } catch (e) { console.warn("Quote record error:", e); return null; }
+  };
+  const quoteLinks = (row) => {
+    if (!row?.quote_reference || !row?.resume_token) return null;
+    const base = `${window.location.origin}/?q=${encodeURIComponent(row.quote_reference)}&t=${row.resume_token}`;
+    return { approve: base + "&a=approve", view: base + "&a=view" };
   };
 
   const notifyOffice = (subject, rows) => {
@@ -3715,9 +3736,9 @@ export default function App() {
       body: JSON.stringify({ to: OFFICE_EMAIL, subject, htmlContent: html }) }).catch(() => {});
   };
 
-  const quoteEmailHtml = (eq, info, deposit) => {
+  const quoteEmailHtml = (eq, info, deposit, extra = {}) => {
     const total = quoteTotal(eq, quote);
-    return buildQuoteEmailHtml({
+    return buildQuoteEmailHtml({ ...extra,
       lang, brandName: brand.name, customerName: info?.name, address: property?.address,
       eq, total, monthly: Math.round(total / 60), deposit,
       lines: quoteLines(eq, catalog, lang), warranties: warrantyLines(eq, lang), rooftop: Plan.isRooftop(answers.installLocation),
@@ -3728,19 +3749,20 @@ export default function App() {
   const emailQuoteNow = async (info) => {
     const eq = emailEq;
     const total = quoteTotal(eq, quote);
+    const row = await recordQuote(eq, info, "emailed");
     const r = await fetch("/api/send-email", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         to: info.email.trim(),
         subject: lang === "es" ? `Su Cotización de ${brand.name}` : `Your ${brand.name} Quote`,
-        htmlContent: quoteEmailHtml(eq, info, Math.round(total * 0.5)),
+        htmlContent: quoteEmailHtml(eq, info, Math.round(total * 0.5), { links: quoteLinks(row) }),
       }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(lang === "es" ? "No pudimos enviar el correo. Intente de nuevo en un momento." : (data.error ? "We couldn't send the email right now. Please try again in a moment." : "Could not send — please try again."));
     setCustomerInfo(info);
     saveOption(eq);
-    const id = await recordQuote(eq, info, "emailed");
+    const id = row?.quote_reference || row?.id;
     notifyOffice(`Quote emailed — ${info.name}`, [
       ["Name", info.name], ["Email", info.email], ["Phone", info.phone], ["Contact by", info.contactPref],
       ["Address", property?.address], ["System", eqSummary(eq)], ["Price", money(total)], ["Quote #", id ? String(id) : ""],
@@ -3797,7 +3819,7 @@ export default function App() {
         body: JSON.stringify({
           to: customerInfo.email,
           subject: lang === "es" ? `Su Cotización Detallada - ${brand.name}` : `Your Detailed Estimate - ${brand.name}`,
-          htmlContent: quoteEmailHtml(selectedEq, customerInfo, isFinancing ? null : deposit),
+          htmlContent: quoteEmailHtml(selectedEq, customerInfo, isFinancing ? null : deposit, { booked: true }),
         }),
       }).catch(e => console.error("Detailed estimate email error:", e));
     }
@@ -3845,6 +3867,38 @@ export default function App() {
   useEffect(() => {
     const checkResume = async () => {
       const params = new URLSearchParams(window.location.search);
+      // Emailed quote link: ?q=<quote ref>&t=<private token>&a=approve|view
+      const qRef = params.get("q"), qTok = params.get("t");
+      if (qRef && qTok) {
+        try {
+          const res = await rpc("get_quote_resume", { p_ref: qRef, p_token: qTok });
+          const st = res?.state;
+          window.history.replaceState({}, "", window.location.pathname);
+          if (st?.eq && st?.property) {
+            if (st.lang) setLang(st.lang);
+            setProperty(st.property);
+            setAnswers(st.answers || {});
+            setQuote({ answers: st.answers || {}, adderTotal: Number(st.adderTotal) || 0, tons: st.tons });
+            if (st.customerInfo) setCustomerInfo(st.customerInfo);
+            setQuoteId(res.quote_id || null);
+            setSelectedBrands([]);
+            if (res.expired) {
+              setLinkNotice("expired");
+              setScreen("s11");
+            } else {
+              setSelectedEq(st.eq);
+              setSavedOptions([st.eq]);
+              setEmailEq(st.eq);
+              setFormMode("schedule"); setFormReturn("s15");
+              const ci = st.customerInfo;
+              const hasContact = ci && ci.name && ci.email && ci.phone;
+              setScreen(params.get("a") === "approve" ? (hasContact ? "schedule" : "s16") : "s15");
+            }
+            setResumeChecked(true);
+            return;
+          }
+        } catch (e) { console.warn("Quote link error:", e); }
+      }
       const resumeToken = params.get("resume");
       if (resumeToken) {
         try {
@@ -3957,7 +4011,15 @@ export default function App() {
 
       {screen === "s10" && <S10_Preparing brand={brand} t={t} onDone={() => go("s11")} quoteReady={!!ready} />}
 
-      {screen === "s11" && ready && <S_Recommendation {...common} quote={quote} catalog={catalog} onChooseFamily={() => go("s12")} onBack={() => go("s8b")} />}
+      {screen === "s11" && ready && linkNotice === "expired" && (
+        <div style={{ maxWidth: 430, margin: "0 auto", padding: "10px 20px 0" }}>
+          <div style={{ background: "#fefce8", border: `1.5px solid ${C.gold}`, borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#854d0e", fontWeight: 700 }}>
+            {L(lang, "The 45-day guarantee on your earlier quote has ended, so here are today's prices for your home. Choose again and your new quote is guaranteed for another 45 days.",
+              "La garantía de 45 días de su cotización anterior terminó; estos son los precios de hoy para su casa. Elija de nuevo y su nueva cotización queda garantizada por otros 45 días.")}
+          </div>
+        </div>
+      )}
+      {screen === "s11" && ready && <S_Recommendation {...common} quote={quote} catalog={catalog} onChooseFamily={() => { setLinkNotice(null); go("s12"); }} onBack={() => go("s8b")} />}
       {["s11", "s12", "s13", "s14", "s15", "savedQuotes"].includes(screen) && !ready && (
         <Shell t={t} brand={brand} onCG={cg} onStartOver={handleStartOver} showBack onBack={() => go("s9")}>
           {catalogError || quoteFailed || !property || !answers.installLocation ? (
@@ -4004,8 +4066,8 @@ export default function App() {
           setCustomerInfo(info);
           const eq = formMode === "email" ? emailEq : selectedEq;
           if (eq) setSelectedEq(eq);
-          const id = await recordQuote(eq, info, "approved");
-          if (id) setQuoteId(id);
+          const row = await recordQuote(eq, info, "approved");
+          if (row?.id) setQuoteId(row.id);
           go("schedule");
         }}
         onViewTerms={() => go("terms")} onViewPrivacy={() => go("privacy")}
@@ -4018,7 +4080,6 @@ export default function App() {
         <CheckoutCalendar {...common} paymentInfo={paymentInfo}
           onConfirm={async (date) => {
             setInstallDate(date.available_date);
-            try { await rpc("hold_install_slot", { p_date: date.available_date }); } catch (e) { console.error("Slot hold error:", e); }
             go("checkout");
           }}
           onBack={() => go("s16")} />
