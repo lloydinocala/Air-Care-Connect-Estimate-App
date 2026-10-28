@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { DUCT_ROOMS, DUCT_AHU, DUCT_LAST, DUCT_TYPES, DUCT_VENTS, offeredServices, buildDuctQuote, ductSettings, supplyCount } from "./ductQuote";
 
 // ── DESIGN TOKENS ─────────────────────────────────────────────────────────────
 const C = {
@@ -341,7 +342,11 @@ const QuoteEngine = {
   fetchAllAdders: async () => {
     if (QuoteEngine._addersCache) return QuoteEngine._addersCache;
     try {
-      const data = await sb.get("job_qualifiers", "active=eq.true&select=*");
+      // Price adders are edited in Journey → Estimate App Setup and arrive with the catalog;
+      // the app's own table is only a fallback.
+      let data = [];
+      try { const cat = await Catalog.load(); if (Array.isArray(cat.qualifiers) && cat.qualifiers.length) data = cat.qualifiers; } catch (e) {}
+      if (!data.length) data = await sb.get("job_qualifiers", "active=eq.true&select=*");
       const map = {};
       (Array.isArray(data) ? data : []).forEach(a => { map[a.qualifier_key] = a; });
       QuoteEngine._addersCache = map;
@@ -674,7 +679,7 @@ function EquipmentCard({ eq, adders, t, onSave, onSelect, saved, recommended, la
 // ── SHARED EMAIL TEMPLATE ──────────────────────────────────────────────────────
 // Builds a polished, branded HTML quote email used by both Comfort Guide
 // and the Screen 15 "Email This Quote" button — single source of truth.
-function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total, monthly, deposit, lines, warranties, rooftop, links, booked }) {
+function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total, monthly, deposit, lines, warranties, rooftop, links, booked, logoUrl }) {
   const isEs = lang === "es";
   const accent = "#00B0F0";
   const navy = "#163E64";
@@ -788,6 +793,7 @@ function buildQuoteEmailHtml({ lang, brandName, customerName, address, eq, total
 
         ${qualityPledgeBlock}
 
+        ${useLines && logoUrl ? `<div style="text-align:center; margin: 4px 0 10px;"><img src="${logoUrl}" alt="${(eq && (eq.brandName || eq.outdoor_brand)) || ""}" style="max-width:220px; max-height:70px;"></div>` : ""}
         ${useLines ? `<div style="font-weight:900; font-size:15px; color:${navy}; margin-bottom: 10px;">${(eq && (eq.brandName || eq.outdoor_brand)) || ""} — ${lines[0]}</div>` : ""}
 
         <!-- Warranty -->
@@ -2430,25 +2436,39 @@ const eqSummary = (eq, lang = "en") => eq ? `${eq.brandName || eq.outdoor_brand}
 
 // ── BRAND TILE — blue border = our favorites (Recommended), orange = other brands ──
 const ORANGE = "#C55A11";
-function BrandTile({ name, fav, bestValue, selected, onClick, lang, compact }) {
+const logoFor = (catalog, eqOrKey) => {
+  const k = typeof eqOrKey === "string" ? eqOrKey : (eqOrKey?.brandKey || brandKey(eqOrKey?.outdoor_brand));
+  return catalog?.logos?.[k] || null;
+};
+
+// Brand tile: the brand's logo (uploaded in Journey → Estimate App Setup) on a white card,
+// or its name when no logo is uploaded. Blue border = our favorites, orange = other brands.
+function BrandTile({ name, logo, fav, bestValue, selected, onClick, lang, compact, hero }) {
+  const [broken, setBroken] = useState(false);
+  const showLogo = logo && !broken;
+  const h = hero ? 76 : compact ? 50 : 58;
   return (
     <button onClick={onClick} style={{
       width: "100%", display: "flex", alignItems: "center", gap: 12, background: "transparent",
       border: "none", padding: 0, cursor: onClick ? "pointer" : "default", fontFamily: FONT, textAlign: "left",
+      justifyContent: hero ? "center" : "flex-start",
     }}>
       <span style={{
-        flex: compact ? "0 0 auto" : "0 0 62%", minWidth: compact ? 150 : 0, background: C.white,
-        border: `3px solid ${fav ? C.blue : ORANGE}`, borderRadius: 6, padding: compact ? "8px 12px" : "12px 14px",
-        fontWeight: 900, fontSize: compact ? 16 : 18, color: C.navy, letterSpacing: 0.5,
-        boxShadow: SHADOW_SM, textAlign: "center", textTransform: "uppercase",
-      }}>{name}</span>
+        flex: hero ? "0 0 82%" : compact ? "0 0 auto" : "0 0 62%", minWidth: compact ? 160 : 0, height: h, boxSizing: "border-box",
+        background: C.white, border: `3px solid ${fav ? C.blue : ORANGE}`, borderRadius: 8, padding: showLogo ? "6px 12px" : "0 14px",
+        display: "flex", alignItems: "center", justifyContent: "center", boxShadow: SHADOW_SM,
+      }}>
+        {showLogo
+          ? <img src={logo} alt={name} onError={() => setBroken(true)} style={{ maxWidth: "100%", maxHeight: h - 18, objectFit: "contain" }} />
+          : <span style={{ fontWeight: 900, fontSize: hero ? 22 : compact ? 16 : 18, color: C.navy, letterSpacing: 0.5, textTransform: "uppercase", textAlign: "center" }}>{name}</span>}
+      </span>
       {onClick && (
         <span aria-hidden style={{
           width: 24, height: 24, borderRadius: 6, border: `2px solid ${C.navy}`, background: selected ? C.blue : C.white,
           color: C.white, fontWeight: 900, fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
         }}>{selected ? "✓" : ""}</span>
       )}
-      {bestValue && (
+      {bestValue && !hero && (
         <span style={{
           background: "#1F5C7A", color: C.white, fontWeight: 800, fontSize: 12, padding: "6px 12px",
           borderRadius: "4px 14px 4px 14px", whiteSpace: "nowrap",
@@ -2477,7 +2497,7 @@ function CenteredSpinner({ text }) {
 }
 
 // ── NEW: WHAT TYPE OF HOME DO YOU HAVE? ───────────────────────────────────────
-function S_HomeType({ brand, t, lang, detected, onSelect, onBack, onCG, onSave, onStartOver }) {
+function S_HomeType({ brand, t, lang, detected, sub, onSelect, onBack, onCG, onSave, onStartOver }) {
   const opts = [
     ["sitebuilt", L(lang, "Site-Built Single-Family", "Casa Unifamiliar Construida en Sitio")],
     ["plex", L(lang, "Duplex, Triplex or Quad", "Dúplex, Tríplex o Cuádruplex")],
@@ -2490,7 +2510,7 @@ function S_HomeType({ brand, t, lang, detected, onSelect, onBack, onCG, onSave, 
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{L(lang, "What Type of Home Do You Have?", "¿Qué Tipo de Casa Tiene?")}</h1>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{L(lang, "Describe the type of home the unit will be cooling/heating.", "Describa el tipo de casa que la unidad enfriará/calentará.")}</p>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{sub || L(lang, "Describe the type of home the unit will be cooling/heating.", "Describa el tipo de casa que la unidad enfriará/calentará.")}</p>
       </div>
       <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         {opts.map(([id, label], i) => (
@@ -2675,7 +2695,7 @@ function S_ChooseBrands({ brand, t, lang, quote, catalog, fam, selected, onToggl
         <FavLegend lang={lang} />
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {list.map(b => (
-            <BrandTile key={b.key} lang={lang} name={b.name} fav={b.fav} bestValue={b.bestValue}
+            <BrandTile key={b.key} lang={lang} name={b.name} logo={logoFor(catalog, b.key)} fav={b.fav} bestValue={b.bestValue}
               selected={sel.includes(b.key)} onClick={() => onToggle(b.key)} />
           ))}
           {!list.length && <p style={{ textAlign: "center", color: C.navy, fontWeight: 700 }}>{L(lang, "No brands are priced for your home's size in this group yet.", "Aún no hay marcas con precio para su casa en este grupo.")}</p>}
@@ -2724,7 +2744,7 @@ function S_SelectedRecs({ brand, t, lang, quote, catalog, fam, brandKeys, savedC
           return (
             <div key={b.key} style={{ background: "transparent", marginBottom: 18 }}>
               <div style={{ background: C.white, borderRadius: 14, border: `2px solid ${C.blue}`, padding: 14, boxShadow: SHADOW_SM }}>
-                <BrandTile lang={lang} name={b.name} fav={b.fav} bestValue={b.bestValue} compact />
+                <BrandTile lang={lang} name={b.name} logo={logoFor(catalog, b.key)} fav={b.fav} bestValue={b.bestValue} compact />
                 <div style={{ color: C.blue, fontWeight: 900, fontSize: 20, marginTop: 10, lineHeight: 1.25 }}>
                   {b.size} {L(lang, "Ton", "Toneladas")} {Plan.typeLabel(b.rows[0], lang)}
                 </div>
@@ -2769,11 +2789,19 @@ function S_QuoteDetail({ brand, t, lang, quote, catalog, eq, saved, savedCount, 
       </div>
       <div style={{ padding: "12px 20px 0" }}>
         <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW, border: `2px solid ${C.blue}` }}>
-          <BrandTile lang={lang} name={eq.brandName || eq.outdoor_brand} fav={eq.recommended} bestValue={eq.best_value} compact />
-          <div style={{ marginTop: 12 }}>
-            {lines.map((l, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 13.5, color: C.navy, fontWeight: i === 0 ? 900 : 600, borderBottom: i === 0 ? `1px solid ${C.gray}` : "none" }}>
-                <span style={{ color: C.blue, fontWeight: 900 }}>{i === 0 ? "" : "✓"}</span>{l}
+          <BrandTile lang={lang} name={eq.brandName || eq.outdoor_brand} logo={logoFor(catalog, eq)} fav={eq.recommended} hero />
+          {eq.best_value && <div style={{ textAlign: "center", marginTop: 8 }}><span style={{ background: "#1F5C7A", color: C.white, fontWeight: 800, fontSize: 12, padding: "4px 12px", borderRadius: "4px 14px 4px 14px" }}>{L(lang, "Best Value", "Mejor Valor")}</span></div>}
+          {/* Headline: the system being quoted leads the page */}
+          <div style={{ textAlign: "center", margin: "14px 0 10px", paddingBottom: 12, borderBottom: `2px solid ${C.gray}` }}>
+            <div style={{ fontSize: 26, fontWeight: 900, color: C.navy, lineHeight: 1.15 }}>
+              {eq.size_tons} {L(lang, "Ton", "Toneladas")} · {eq.seer2} SEER2
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: C.blue, lineHeight: 1.2, marginTop: 4 }}>{Plan.typeLabel(eq, lang)}</div>
+          </div>
+          <div>
+            {lines.slice(1).map((l, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 13.5, color: C.navy, fontWeight: 600 }}>
+                <span style={{ color: C.blue, fontWeight: 900 }}>✓</span>{l}
               </div>
             ))}
           </div>
@@ -2801,7 +2829,7 @@ function S_QuoteDetail({ brand, t, lang, quote, catalog, eq, saved, savedCount, 
 }
 
 // ── YOUR 45-DAY GUARANTEED QUOTES (saved list) ────────────────────────────────
-function S_SavedQuotes({ brand, t, lang, quote, saved, onOpen, onEmail, onRemove, onMore, onBack, onCG }) {
+function S_SavedQuotes({ brand, t, lang, quote, catalog, saved, onOpen, onEmail, onRemove, onMore, onBack, onCG }) {
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
@@ -2817,7 +2845,7 @@ function S_SavedQuotes({ brand, t, lang, quote, saved, onOpen, onEmail, onRemove
         {saved.map(eq => (
           <div key={eq.id} style={{ display: "flex", gap: 10, alignItems: "stretch", marginBottom: 12 }}>
             <div onClick={() => onOpen(eq)} style={{ flex: 1, background: C.white, border: `2px solid ${C.blue}`, borderRadius: 12, padding: 12, cursor: "pointer", textAlign: "center", boxShadow: SHADOW_SM }}>
-              <BrandTile lang={lang} name={eq.brandName || eq.outdoor_brand} fav={eq.recommended} compact />
+              <BrandTile lang={lang} name={eq.brandName || eq.outdoor_brand} logo={logoFor(catalog, eq)} fav={eq.recommended} hero />
               <div style={{ color: C.blue, fontWeight: 800, fontSize: 14, marginTop: 6 }}>{eq.size_tons} {L(lang, "Ton", "Ton.")}, {eq.seer2} SEER2</div>
               <div style={{ color: C.blue, fontWeight: 800, fontSize: 14 }}>{Plan.typeLabel(eq, lang)}</div>
               <div style={{ fontWeight: 900, fontSize: 18, color: C.black }}>{money(quoteTotal(eq, quote))}</div>
@@ -2841,7 +2869,7 @@ function S_SavedQuotes({ brand, t, lang, quote, saved, onOpen, onEmail, onRemove
 }
 
 // ── ALMOST THERE (contact form) — "schedule" or "email" mode ──────────────────
-function S_AlmostThere({ brand, t, lang, mode, initial, emailEq, onContinue, onEmailSend, onAfterEmail, onBack, onCG, onViewTerms, onViewPrivacy }) {
+function S_AlmostThere({ brand, t, lang, mode, initial, emailEq, summaryText, continueText, onContinue, onEmailSend, onAfterEmail, onBack, onCG, onViewTerms, onViewPrivacy }) {
   const [form, setForm] = useState({ name: initial?.name || "", email: initial?.email || "", phone: initial?.phone || "", contactPref: initial?.contactPref || "both" });
   const [state, setState] = useState(null); // null | sending | sent | error
   const [err, setErr] = useState("");
@@ -2869,7 +2897,7 @@ function S_AlmostThere({ brand, t, lang, mode, initial, emailEq, onContinue, onE
         <p style={{ fontSize: 14, color: C.navy, fontWeight: 600, margin: "6px 0 0" }}>
           {mode === "email" ? L(lang, "Where should we send your quote?", "¿A dónde enviamos su cotización?") : t.personalDesc}
         </p>
-        {mode === "email" && emailEq && <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{eqSummary(emailEq, lang)}</p>}
+        {mode === "email" && (summaryText || emailEq) && <p style={{ fontSize: 12, color: "#64748b", margin: "4px 0 0" }}>{summaryText || eqSummary(emailEq, lang)}</p>}
       </div>
       <div style={{ padding: "16px 20px 0" }}>
         {state === "sent" ? (
@@ -2878,7 +2906,7 @@ function S_AlmostThere({ brand, t, lang, mode, initial, emailEq, onContinue, onE
               ✓ {L(lang, `Quote sent to ${form.email}`, `Cotización enviada a ${form.email}`)}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <BlueBtn onClick={() => onContinue(form)}>{t.continueToSchedule}</BlueBtn>
+              <BlueBtn onClick={() => onContinue(form)}>{continueText || t.continueToSchedule}</BlueBtn>
               <WhiteBtn onClick={onAfterEmail}>{L(lang, "Back to My Quotes", "Volver a Mis Cotizaciones")}</WhiteBtn>
             </div>
           </div>
@@ -2912,7 +2940,7 @@ function S_AlmostThere({ brand, t, lang, mode, initial, emailEq, onContinue, onE
                 {state === "sending" ? L(lang, "Sending…", "Enviando…") : L(lang, "Email My Quote", "Enviar Mi Cotización")}
               </BlueBtn>
             ) : (
-              <BlueBtn onClick={() => valid && onContinue(form)} disabled={!valid}>{t.continueToSchedule}</BlueBtn>
+              <BlueBtn onClick={() => valid && onContinue(form)} disabled={!valid}>{continueText || t.continueToSchedule}</BlueBtn>
             )}
             <p style={{ fontSize: 11, color: "#64748b", textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>
               {L(lang, "Your information is private and secure. We will never sell your data or contact you without your permission.",
@@ -3236,7 +3264,7 @@ function CheckoutPayment({ brand, t, quote, selectedEq, customerInfo, onSelectMe
 // ── CHECKOUT: CARD OR BANK (ACH) DEPOSIT — real Stripe Payment Element ────────
 // Card charges instantly. ACH uses Stripe's bank-account flow (instant bank login or
 // micro-deposits); the payment shows as "processing" until the bank confirms (1–4 business days).
-function CheckoutStripe({ brand, t, lang, method, deposit, customerInfo, onSuccess, onBack, onCG }) {
+function CheckoutStripe({ brand, t, lang, method, deposit, customerInfo, descriptionText, titleText, onSuccess, onBack, onCG }) {
   const isAch = method === "ach";
   const [stripe, setStripe] = useState(null);
   const [elements, setElements] = useState(null);
@@ -3258,7 +3286,7 @@ function CheckoutStripe({ brand, t, lang, method, deposit, customerInfo, onSucce
             amount: deposit,
             customerEmail: customerInfo?.email,
             customerName: customerInfo?.name,
-            description: `${brand.name} - AC System Installation Deposit`,
+            description: descriptionText || `${brand.name} - AC System Installation Deposit`,
             paymentMethodType: isAch ? "ach" : "card",
           }),
         });
@@ -3311,8 +3339,8 @@ function CheckoutStripe({ brand, t, lang, method, deposit, customerInfo, onSucce
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{isAch ? t.achFormTitle : t.cardFormTitle}</h1>
-        <div style={{ fontSize: 24, fontWeight: 900, color: C.blue, margin: "10px 0" }}>${deposit.toLocaleString()}</div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{titleText || (isAch ? t.achFormTitle : t.cardFormTitle)}</h1>
+        <div style={{ fontSize: 24, fontWeight: 900, color: C.blue, margin: "10px 0" }}>${deposit.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
       </div>
       <div style={{ padding: "8px 20px 0" }}>
         <div style={{ background: C.white, border: `2px solid ${C.blue}`, borderRadius: 12, padding: 16, marginBottom: 14, boxShadow: SHADOW_SM, minHeight: 50 }}>
@@ -3326,7 +3354,7 @@ function CheckoutStripe({ brand, t, lang, method, deposit, customerInfo, onSucce
         )}
         {error && <p style={{ color: "#dc2626", fontSize: 13, fontWeight: 700, textAlign: "center", marginBottom: 8 }}>{error}</p>}
         <BlueBtn onClick={handlePay} disabled={!ready || processing} style={{ marginTop: 8 }}>
-          {processing ? t.processingPayment : `${isAch ? t.achSubmit : t.payNow} - $${deposit.toLocaleString()}`}
+          {processing ? t.processingPayment : `${isAch ? t.achSubmit : t.payNow} - $${deposit.toLocaleString(undefined, { minimumFractionDigits: deposit % 1 ? 2 : 0, maximumFractionDigits: 2 })}`}
         </BlueBtn>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16 }}>
           <span style={{ fontSize: 16 }}>{"🔒"}</span>
@@ -3427,7 +3455,7 @@ function CheckoutAffirm({ brand, t, total, onSuccess, onBack, onCG }) {
 }
 
 // ── CHECKOUT: SCHEDULING CALENDAR ─────────────────────────────────────────────
-function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG }) {
+function CheckoutCalendar({ brand, t, lang, paymentInfo, daysUrl, titleText, descText, noteText, onConfirm, onBack, onCG }) {
   const [availableDates, setAvailableDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -3439,7 +3467,7 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
       try {
         // Install days come from Journey: business hours, holidays, Booking Rules → Online system
         // installs (installs per day, days, minimum notice) and install jobs already on the calendar.
-        const r = await fetch(INSTALL_DAYS_URL);
+        const r = await fetch(daysUrl || INSTALL_DAYS_URL);
         const body = await r.json();
         const data = (Array.isArray(body?.days) ? body.days : []).map(d => ({ available_date: d.available_date, booked_slots: d.booked ?? 0, max_slots: d.max_slots ?? 1 }));
         if (data.length) {
@@ -3471,10 +3499,10 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
   return (
     <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
       <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{t.calendarTitle}</h1>
-        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{t.calendarDesc}</p>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{titleText || t.calendarTitle}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{descText || t.calendarDesc}</p>
         <p style={{ fontSize: 11, color: "#94a3b8", margin: "6px 0 0", fontStyle: "italic" }}>
-          {lang === "es" ? "No se preocupe — puede cambiar o cancelar esto en cualquier momento antes de la instalación." : "Don't worry — you can change or cancel this anytime before installation day."}
+          {noteText || (lang === "es" ? "No se preocupe — puede cambiar o cancelar esto en cualquier momento antes de la instalación." : "Don't worry — you can change or cancel this anytime before installation day.")}
         </p>
       </div>
 
@@ -3537,7 +3565,7 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, onConfirm, onBack, onCG
 }
 
 // ── CHECKOUT: CONFIRMATION ─────────────────────────────────────────────────────
-function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo, onDone }) {
+function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo, titleText, descText, dateLabel, timeText, steps, onDone }) {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: FONT, maxWidth: 430, margin: "0 auto" }}>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
@@ -3547,8 +3575,8 @@ function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo,
           fontSize: 48, color: C.white, marginBottom: 20, boxShadow: SHADOW,
         }}>✓</div>
 
-        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: "0 0 8px" }}>{t.confirmationTitle}</h1>
-        <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 24, maxWidth: 320 }}>{t.confirmationDesc}</p>
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: "0 0 8px" }}>{titleText || t.confirmationTitle}</h1>
+        <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 24, maxWidth: 320 }}>{descText || t.confirmationDesc}</p>
 
         <div style={{ background: C.white, borderRadius: 16, padding: 20, boxShadow: SHADOW, width: "100%", marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.gray}` }}>
@@ -3556,16 +3584,16 @@ function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo,
             <span style={{ color: C.navy, fontWeight: 900, fontSize: 13 }}>{bookingRef}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
-            <span style={{ color: "#64748b", fontWeight: 600, fontSize: 13 }}>{t.installDate}</span>
+            <span style={{ color: "#64748b", fontWeight: 600, fontSize: 13 }}>{dateLabel || t.installDate}</span>
             <span style={{ color: C.navy, fontWeight: 900, fontSize: 13 }}>
-              {new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+              {new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}{timeText ? ` · ${timeText}` : ""}
             </span>
           </div>
         </div>
 
         <div style={{ background: C.white, borderRadius: 16, padding: 18, boxShadow: SHADOW_SM, width: "100%", marginBottom: 24, textAlign: "left" }}>
           <div style={{ fontWeight: 900, fontSize: 14, color: C.navy, marginBottom: 10 }}>{t.whatNext}</div>
-          {[t.nextStep1, t.nextStep2, t.nextStep3].map((step, i) => (
+          {(steps || [t.nextStep1, t.nextStep2, t.nextStep3]).map((step, i) => (
             <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 13, color: C.navy, fontWeight: 600, lineHeight: 1.4 }}>
               <span style={{ color: C.blue, fontWeight: 900 }}>{i + 1}.</span>{step}
             </div>
@@ -3576,6 +3604,259 @@ function CheckoutConfirmation({ brand, t, bookingRef, installDate, customerInfo,
       </div>
     </div>
   );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// DUCT CLEANING & DRYER VENT CLEANING — its own path (open the app at /ducts).
+// Prices come from Journey's Duct Cleaning Pricebook; the math lives in ductQuote.js
+// (the same file Journey's guided duct estimate uses), so both always agree.
+// ═════════════════════════════════════════════════════════════════════════════
+const DUCT_DAYS_URL = INSTALL_DAYS_URL + "&kind=duct";
+const money2 = (n) => "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: (Number(n) || 0) % 1 ? 2 : 0, maximumFractionDigits: 2 });
+const ductGuaranteeDays = (catalog) => Number(ductSettings(catalog?.ductSettings).guarantee_days) || 14;
+const ductGuaranteeDate = (lang, days) => {
+  const d = new Date(); d.setDate(d.getDate() + days);
+  return d.toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "long", day: "numeric", year: "numeric" });
+};
+const ductStartLabel = (catalog, lang) => {
+  const st = String(ductSettings(catalog?.ductSettings).start_time || "09:00");
+  const [h, m] = st.split(":").map(Number);
+  const d = new Date(2000, 0, 1, h || 9, m || 0);
+  return d.toLocaleTimeString(lang === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit" });
+};
+const ductLabel = (list, id, lang) => { const r = list.find(x => x[0] === id); return r ? (lang === "es" ? r[2] : r[1]) : ""; };
+// Answers → quote, using the live pricebook from the catalog.
+const ductQuoteFor = (duct, catalog, lang) => buildDuctQuote(duct || {}, catalog?.ductItems || [], catalog?.ductSettings, catalog?.salesTaxRate, lang);
+
+function S_DuctLanding({ brand, t, lang, onStart, onCG }) {
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", fontFamily: FONT, maxWidth: 430, margin: "0 auto" }}>
+      <div style={{ padding: "20px 20px 0", textAlign: "center" }}>
+        <ShieldLogo brand={brand} size={56} />
+        <h1 style={{ fontSize: 24, fontWeight: 900, color: C.navy, margin: "12px 0 0", lineHeight: 1.25 }}>
+          {L(lang, "See What Duct Cleaning & Dryer Vent Cleaning Could Cost for Your Home", "Vea Cuánto Podría Costar la Limpieza de Ductos y del Ducto de Secadora en Su Casa")}
+        </h1>
+      </div>
+      <HeroCard imgSrc="/family-hero.jpg">
+        <div style={{ background: C.white, padding: "14px 18px" }}>
+          <p style={{ margin: "0 0 10px", fontWeight: 800, color: C.navy, fontSize: 14, textAlign: "center", lineHeight: 1.5 }}>
+            {L(lang, "Answer a few simple questions and get a guaranteed price for your home — then pick your day.", "Conteste unas preguntas sencillas y reciba un precio garantizado para su casa — y elija su día.")}
+          </p>
+          <TrustRow items={[t.noAppt, t.noCall, L(lang, "Nothing to pay in advance.", "Nada que pagar por adelantado.")]} />
+        </div>
+      </HeroCard>
+      <div style={{ padding: "18px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+        <BlueBtn onClick={onStart}>{L(lang, "Start My Quote", "Comenzar Mi Cotización")}</BlueBtn>
+      </div>
+      <div style={{ padding: "16px 20px 28px", marginTop: "auto" }}><CGBar t={t} onClick={onCG} /></div>
+    </div>
+  );
+}
+
+// One question, one tap.
+function S_DuctChoice({ brand, t, lang, title, sub, opts, selected, onSelect, onBack, onCG, onSave, onStartOver }) {
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{title}</h1>
+        {sub && <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{sub}</p>}
+      </div>
+      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
+        {opts.map(([id, en, es], i) => {
+          const label = lang === "es" ? es : en;
+          const st = selected === id ? { outline: `3px solid ${C.navy}` } : {};
+          return i % 2 === 0
+            ? <BlueBtn key={id} onClick={() => onSelect(id)} style={st}>{label}</BlueBtn>
+            : <WhiteBtn key={id} onClick={() => onSelect(id)} style={st}>{label}</WhiteBtn>;
+        })}
+      </div>
+      <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
+    </Shell>
+  );
+}
+
+function Stepper({ value, onChange, max = 12 }) {
+  const btn = (txt, fn, off) => (
+    <button onClick={fn} disabled={off} style={{ width: 34, height: 34, borderRadius: "50%", border: `2px solid ${C.blue}`, background: off ? C.gray : C.white, color: C.blue, fontWeight: 900, fontSize: 18, cursor: off ? "default" : "pointer", fontFamily: FONT }}>{txt}</button>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      {btn("−", () => onChange(Math.max(0, value - 1)), value <= 0)}
+      <span style={{ minWidth: 22, textAlign: "center", fontWeight: 900, fontSize: 18, color: C.navy }}>{value}</span>
+      {btn("+", () => onChange(Math.min(max, value + 1)), value >= max)}
+    </div>
+  );
+}
+
+function S_DuctRooms({ brand, t, lang, rooms, sqft, catalog, onContinue, onBack, onCG, onSave, onStartOver }) {
+  const [r, setR] = useState(() => ({ ...Object.fromEntries(DUCT_ROOMS.map(([k]) => [k, 0])), ...(rooms || {}) }));
+  const [sf, setSf] = useState(sqft ? String(sqft) : "");
+  const supply = supplyCount(r, ductSettings(catalog?.ductSettings));
+  const sfNum = Number(String(sf).replace(/\D/g, "")) || 0;
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{L(lang, "How Many Rooms of Each Type Do You Have?", "¿Cuántas Habitaciones de Cada Tipo Tiene?")}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{L(lang, "Select a number next to each room description.", "Elija un número junto a cada tipo de habitación.")}</p>
+      </div>
+      <div style={{ padding: "14px 20px 0" }}>
+        <div style={{ background: C.white, borderRadius: 16, padding: "6px 14px", boxShadow: SHADOW_SM, border: `2px solid ${C.blue}` }}>
+          {DUCT_ROOMS.map(([k, en, es], i) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderTop: i ? `1px solid ${C.gray}` : "none" }}>
+              <span style={{ fontWeight: 800, color: C.navy, fontSize: 15 }}>{lang === "es" ? es : en}</span>
+              <Stepper value={r[k] || 0} onChange={v => setR(p => ({ ...p, [k]: v }))} />
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 14, fontSize: 11, fontWeight: 800, color: C.navy, letterSpacing: 1.5, marginBottom: 6 }}>{L(lang, "HEATED & COOLED SQUARE FEET", "PIES CUADRADOS CLIMATIZADOS")}</div>
+        <input value={sf} onChange={e => setSf(e.target.value.replace(/[^\d,]/g, ""))} inputMode="numeric" placeholder="1,800"
+          style={{ width: "100%", border: `2px solid ${C.blue}`, borderRadius: 12, padding: "12px 16px", fontSize: 16, fontFamily: FONT, boxSizing: "border-box", color: C.navy, fontWeight: 700, background: C.white, boxShadow: SHADOW_SM }} />
+        <p style={{ fontSize: 11, color: "#64748b", margin: "6px 0 0" }}>{L(lang, "From public records — correct it if it's off. It sets the price for sanitizing.", "De los registros públicos — corríjalo si no es correcto. Determina el precio de la desinfección.")}</p>
+        <BlueBtn onClick={() => onContinue(r, sfNum)} disabled={supply < 1} style={{ marginTop: 16 }}>{L(lang, "Continue", "Continuar")}</BlueBtn>
+      </div>
+    </Shell>
+  );
+}
+
+function S_DuctServices({ brand, t, lang, ahu, selected, onContinue, onBack, onCG, onSave, onStartOver }) {
+  const offered = offeredServices(ahu);
+  const [sel, setSel] = useState(() => new Set((selected && selected.length ? selected : ["covers", "ducts"]).filter(k => offered.some(([o]) => o === k))));
+  const toggle = (k) => { if (k === "covers") return; setSel(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; }); };
+  const chosen = [...sel].filter(k => k !== "covers");
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>{L(lang, "Based Upon Your Answers We Offer the Following Services", "Según Sus Respuestas Le Ofrecemos los Siguientes Servicios")}</h1>
+        <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{L(lang, "Click each one that interests you.", "Toque cada uno que le interese.")}</p>
+      </div>
+      <div style={{ padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+        {offered.map(([k, en, es]) => {
+          const on = sel.has(k) || k === "covers";
+          return (
+            <button key={k} onClick={() => toggle(k)} style={{
+              display: "flex", alignItems: "center", gap: 12, background: on ? C.blue : C.white, color: on ? C.white : C.navy,
+              border: `2px solid ${C.blue}`, borderRadius: 50, padding: "13px 20px", fontWeight: 800, fontSize: 15, fontFamily: FONT,
+              cursor: k === "covers" ? "default" : "pointer", boxShadow: SHADOW_SM, textAlign: "left",
+            }}>
+              <span style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${on ? C.white : C.blue}`, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 14 }}>{on ? "✓" : ""}</span>
+              {lang === "es" ? es : en}
+            </button>
+          );
+        })}
+        {!offered.some(([k]) => k === "blower") && (
+          <p style={{ fontSize: 12, color: "#64748b", margin: 0, textAlign: "center" }}>{L(lang, "Blower and coil cleaning aren't offered online when the air handler hangs from the ceiling or sits in the attic.", "La limpieza del soplador y del serpentín no se ofrece en línea cuando el manejador de aire cuelga del techo o está en el ático.")}</p>
+        )}
+        <p style={{ fontSize: 11.5, color: C.navy, margin: "2px 0 0", lineHeight: 1.5 }}>
+          * {L(lang, "Sanitizing is done through the returns and the A/C system. People and pets don't need to leave — birds should be removed for 30 minutes.", "La desinfección se hace a través de los retornos y el sistema de A/C. Personas y mascotas no necesitan salir — las aves deben retirarse por 30 minutos.")}
+        </p>
+        <BlueBtn onClick={() => onContinue([...sel])} disabled={!chosen.length} style={{ marginTop: 6 }}>{L(lang, "See My Quote", "Ver Mi Cotización")}</BlueBtn>
+      </div>
+    </Shell>
+  );
+}
+
+function S_DuctQuote({ brand, t, lang, duct, catalog, onApprove, onEdit, onEmail, onStartOver, onBack, onCG, onSave }) {
+  const q = ductQuoteFor(duct, catalog, lang);
+  const days = ductGuaranteeDays(catalog);
+  const warranty = String(q.settings.warranty_text || "").trim();
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.black, margin: 0 }}>{L(lang, `Your ${days}-Day Guaranteed Quote`, `Su Cotización Garantizada por ${days} Días`)}</h1>
+        <div style={{ fontSize: 17, fontWeight: 800, color: C.blue, marginTop: 4 }}>{L(lang, "Duct Cleaning & Dryer Vent Cleaning", "Limpieza de Ductos y Ducto de Secadora")}</div>
+      </div>
+      <div style={{ padding: "12px 20px 0" }}>
+        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW, border: `2px solid ${C.blue}` }}>
+          <div style={{ fontWeight: 900, color: C.navy, fontSize: 15, marginBottom: 6 }}>{L(lang, "We will perform the following:", "Realizaremos lo siguiente:")}</div>
+          <p style={{ fontSize: 12.5, color: "#334155", margin: "0 0 6px", lineHeight: 1.5 }}>{L(lang, "We will remove and clean all Supply Vents and Return Vents where possible, then replace them once the Ducts have been thoroughly cleaned.", "Retiraremos y limpiaremos todas las rejillas de suministro y de retorno donde sea posible, y las volveremos a colocar una vez que los ductos estén completamente limpios.")}</p>
+          <p style={{ fontSize: 12.5, color: "#334155", margin: "0 0 10px", lineHeight: 1.5 }}>{L(lang, "We will lightly cover furniture where possible, so as to avoid any falling dust.", "Cubriremos ligeramente los muebles donde sea posible para evitar que les caiga polvo.")}</p>
+          {q.lines.map((l, i) => (
+            <div key={i} style={{ padding: "5px 0", borderTop: `1px solid ${C.gray}` }}>
+              <div style={{ display: "flex", gap: 8, fontSize: 14, color: C.navy, fontWeight: 700 }}>
+                <span style={{ color: C.blue, fontWeight: 900 }}>✓</span><span style={{ flex: 1 }}>{l.label}</span>
+              </div>
+              {l.group === "sanitize" && i === q.lines.findIndex(x => x.group === "sanitize") && q.settings.sanitize_note && (
+                <div style={{ fontSize: 11.5, color: "#64748b", margin: "2px 0 0 22px", lineHeight: 1.4 }}>{q.settings.sanitize_note}</div>
+              )}
+            </div>
+          ))}
+          {q.needsVisit && (
+            <div style={{ background: "#fefce8", border: `1.5px solid ${C.gold}`, borderRadius: 10, padding: "8px 12px", marginTop: 8, fontSize: 12.5, color: "#854d0e", fontWeight: 700 }}>
+              {L(lang, "Sanitizing for a home your size is priced in person — it isn't included in the total below. We'll quote it when we call.", "La desinfección para una casa de su tamaño se cotiza en persona — no está incluida en el total. Se la cotizaremos cuando le llamemos.")}
+            </div>
+          )}
+          <div style={{ textAlign: "center", borderTop: `2px solid ${C.gray}`, marginTop: 10, paddingTop: 10 }}>
+            <div style={{ fontSize: 34, fontWeight: 900, color: C.navy }}>{money2(q.total)}</div>
+            {q.tax > 0 && <div style={{ fontSize: 12, color: "#64748b" }}>{L(lang, `Includes ${money2(q.tax)} sales tax`, `Incluye ${money2(q.tax)} de impuesto`)}</div>}
+            <div style={{ fontSize: 12.5, color: C.blue, fontWeight: 700, marginTop: 2 }}>{L(lang, "Nothing to pay in advance — pay on the day of service.", "Nada que pagar por adelantado — pague el día del servicio.")}</div>
+          </div>
+          <div style={{ background: C.navy, color: C.white, borderRadius: 10, padding: "8px 12px", marginTop: 10, fontWeight: 800, fontSize: 13, textAlign: "center" }}>
+            🛡️ {warranty || L(lang, "Ask About Our Performance Warranty", "Pregunte por Nuestra Garantía de Rendimiento")}
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: "#64748b", textAlign: "center", margin: "8px 0 0" }}>{L(lang, "Price guaranteed through", "Precio garantizado hasta")} {ductGuaranteeDate(lang, days)}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+          <BlueBtn onClick={onApprove} disabled={!q.lines.length}>{L(lang, "Approve This Quote", "Aprobar Esta Cotización")}</BlueBtn>
+          <WhiteBtn onClick={onEdit}>{L(lang, "Edit Your Services", "Cambiar Sus Servicios")}</WhiteBtn>
+          <WhiteBtn onClick={onEmail}>{t.emailQuote}</WhiteBtn>
+          <WhiteBtn onClick={onStartOver}>{L(lang, "Start Over", "Empezar de Nuevo")}</WhiteBtn>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+function S_DuctPay({ brand, t, lang, total, date, timeLabel, onPayNow, onPayLater, onBack, onCG }) {
+  const day = new Date(date + "T00:00:00").toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "long", day: "numeric" });
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.navy, margin: 0 }}>
+          {L(lang, "You can pay today or on the DAY of SERVICE, by Check, Credit Card or Cash", "Puede pagar hoy o el DÍA del SERVICIO, con Cheque, Tarjeta de Crédito o Efectivo")}
+        </h1>
+      </div>
+      <div style={{ padding: "16px 20px 0" }}>
+        <div style={{ background: C.white, borderRadius: 16, padding: 16, boxShadow: SHADOW, border: `2px solid ${C.blue}`, textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 800, letterSpacing: 1 }}>{L(lang, "SERVICES TOTAL", "TOTAL DE SERVICIOS")}</div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: C.navy }}>{money2(total)}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+          <BlueBtn onClick={onPayLater}>{L(lang, "I'll Pay on the Day of Service", "Pagaré el Día del Servicio")}</BlueBtn>
+          <p style={{ fontSize: 13, color: C.navy, fontWeight: 700, textAlign: "center", margin: "6px 0 0" }}>{L(lang, "If you wish to pay in advance by Credit Card, you may do so here:", "Si desea pagar por adelantado con Tarjeta de Crédito, puede hacerlo aquí:")}</p>
+          <WhiteBtn onClick={onPayNow}>💳 {L(lang, `Pay ${money2(total)} Now by Card`, `Pagar ${money2(total)} Ahora con Tarjeta`)}</WhiteBtn>
+        </div>
+        <p style={{ fontSize: 14, color: C.navy, fontWeight: 800, textAlign: "center", margin: "18px 0 0", lineHeight: 1.5 }}>
+          {L(lang, "We look forward to seeing you on", "Lo esperamos el")} <span style={{ color: C.blue }}>{day}</span> {L(lang, "at", "a las")} <span style={{ color: C.blue }}>{timeLabel}</span>
+        </p>
+      </div>
+    </Shell>
+  );
+}
+
+function buildDuctQuoteEmailHtml({ lang, brandName, customerName, address, q, days, links, booked, date, timeLabel, paid }) {
+  const es = lang === "es";
+  const rows = q.lines.map(l => `<tr><td style="padding:6px 0;border-top:1px solid #e2e8f0;color:#163E64;font-weight:700">✓ ${esc(l.label)}</td></tr>`).join("");
+  const btn = (href, label, bg) => `<a href="${esc(href)}" style="display:inline-block;background:${bg};color:#fff;text-decoration:none;font-weight:800;padding:13px 26px;border-radius:40px;margin:6px">${label}</a>`;
+  const when = date ? new Date(date + "T00:00:00").toLocaleDateString(es ? "es-US" : "en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "";
+  return `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;background:#CAEEFB;padding:20px">
+  <div style="background:#fff;border-radius:16px;padding:22px;border:2px solid #00B0F0">
+    <div style="font-size:12px;font-weight:900;color:#00B0F0;letter-spacing:2px;text-transform:uppercase;text-align:center">${esc(brandName)}</div>
+    <h1 style="color:#163E64;font-size:22px;text-align:center;margin:8px 0 2px">${booked ? (es ? "Su Servicio Está Programado" : "Your Service Is Scheduled") : (es ? `Su Cotización Garantizada por ${days} Días` : `Your ${days}-Day Guaranteed Quote`)}</h1>
+    <div style="text-align:center;color:#00B0F0;font-weight:800">${es ? "Limpieza de Ductos y Ducto de Secadora" : "Duct Cleaning &amp; Dryer Vent Cleaning"}</div>
+    ${customerName ? `<p style="color:#163E64">${es ? "Hola" : "Hi"} ${esc(customerName)},</p>` : ""}
+    ${address ? `<p style="color:#64748b;font-size:13px;margin:0 0 10px">${esc(address)}</p>` : ""}
+    ${booked && when ? `<p style="background:#dcfce7;border-radius:10px;padding:10px;color:#166534;font-weight:800;text-align:center">${es ? "Lo esperamos el" : "We look forward to seeing you on"} ${esc(when)} ${es ? "a las" : "at"} ${esc(timeLabel)}</p>` : ""}
+    <p style="color:#334155;font-size:13px;line-height:1.5">${es ? "Retiraremos y limpiaremos todas las rejillas de suministro y de retorno donde sea posible, y las volveremos a colocar una vez que los ductos estén completamente limpios. Cubriremos ligeramente los muebles donde sea posible." : "We will remove and clean all Supply Vents and Return Vents where possible, then replace them once the Ducts have been thoroughly cleaned. We will lightly cover furniture where possible, so as to avoid any falling dust."}</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">${rows}</table>
+    ${q.notes.length ? `<p style="color:#64748b;font-size:12px">${q.notes.map(esc).join("<br>")}</p>` : ""}
+    <div style="text-align:center;border-top:2px solid #D9D9D9;margin-top:10px;padding-top:10px">
+      <div style="font-size:30px;font-weight:900;color:#163E64">${money2(q.total)}</div>
+      ${q.tax > 0 ? `<div style="font-size:12px;color:#64748b">${es ? "Incluye" : "Includes"} ${money2(q.tax)} ${es ? "de impuesto" : "sales tax"}</div>` : ""}
+      <div style="font-size:13px;color:#00B0F0;font-weight:700">${paid ? (es ? "Pagado con tarjeta — ¡gracias!" : "Paid by card — thank you!") : (es ? "Pague el día del servicio con cheque, tarjeta o efectivo." : "Pay on the day of service by check, card or cash.")}</div>
+    </div>
+    ${links && !booked ? `<div style="text-align:center;margin-top:16px">${btn(links.approve, es ? "Aprobar y Elegir Mi Día" : "Approve &amp; Pick My Day", "#00B0F0")}${btn(links.view, es ? "Ver Mi Cotización" : "View My Quote", "#163E64")}</div>` : ""}
+    ${!booked ? `<p style="text-align:center;color:#64748b;font-size:12px">${es ? "Precio garantizado hasta" : "Price guaranteed through"} ${esc(ductGuaranteeDate(lang, days))}</p>` : ""}
+  </div></div>`;
 }
 
 // ── SAVE PROGRESS MODAL ───────────────────────────────────────────────────────
@@ -3648,9 +3929,18 @@ function LangToggle({ lang, setLang }) {
 }
 
 // ── APP ROOT ──────────────────────────────────────────────────────────────────
+// Duct cleaning lives at /ducts (also /duct-cleaning or ?service=ducts).
+const startsInDuctMode = () => {
+  try {
+    return /^\/(ducts?|duct-cleaning)\/?$/i.test(window.location.pathname) || /^ducts?$/i.test(new URLSearchParams(window.location.search).get("service") || "");
+  } catch (e) { return false; }
+};
+
 export default function App() {
   const [lang, setLang] = useState("en");
-  const [screen, setScreen] = useState("s1");
+  const [mode, setMode] = useState(() => (startsInDuctMode() ? "duct" : "system"));
+  const [duct, setDuct] = useState({});
+  const [screen, setScreen] = useState(() => (startsInDuctMode() ? "d1" : "s1"));
   const [property, setProperty] = useState(null);
   const [answers, setAnswers] = useState({});
   const [quote, setQuote] = useState(null);
@@ -3697,7 +3987,7 @@ export default function App() {
 
   const handleStartOver = () => {
     try { localStorage.removeItem("acc_progress"); } catch (e) {}
-    setScreen("s1"); setProperty(null); setAnswers({}); setQuote(null);
+    setScreen(mode === "duct" ? "d1" : "s1"); setProperty(null); setAnswers({}); setQuote(null); setDuct({});
     setBrandFamily(null); setSelectedBrands([]); setSelectedEq(null); setSavedOptions([]); setEmailEq(null);
     setQuoteId(null); setMsChoice(null); setMsRooms([]);
     setCustomerInfo(null); setPaymentInfo(null); setBookingRef(null); setInstallDate(null);
@@ -3742,6 +4032,7 @@ export default function App() {
       lang, brandName: brand.name, customerName: info?.name, address: property?.address,
       eq, total, monthly: Math.round(total / 60), deposit,
       lines: quoteLines(eq, catalog, lang), warranties: warrantyLines(eq, lang), rooftop: Plan.isRooftop(answers.installLocation),
+      logoUrl: logoFor(catalog, eq),
     });
   };
 
@@ -3834,13 +4125,112 @@ export default function App() {
     go("confirmation");
   };
 
+  // ── Duct cleaning: record, email and book ──
+  const ductAnswersForOffice = () => ({
+    ...duct,
+    lastCleanedLabel: ductLabel(DUCT_LAST, duct.lastCleaned, "en"), ductTypeLabel: ductLabel(DUCT_TYPES, duct.ductType, "en"),
+    ventsLabel: ductLabel(DUCT_VENTS, duct.vents, "en"), ahuLabel: ductLabel(DUCT_AHU, duct.ahu, "en"),
+  });
+  const recordDuctQuote = async (info, status) => {
+    try {
+      const q = ductQuoteFor(duct, catalog, "en");
+      const row = await rpc("create_quote_v2", { p: {
+        service_kind: "duct", guarantee_days: ductGuaranteeDays(catalog),
+        property_address: property?.address || null, property_sqft: duct.sqft || property?.sqft || null,
+        property_type: duct.homeKind || null, home_type: duct.homeKind || null, ahu_location: ductLabel(DUCT_AHU, duct.ahu, "en") || null,
+        base_price: q.subtotal, final_price: q.total, deposit_amount: 0,
+        equipment_summary: "Duct cleaning — " + q.lines.map(l => l.label).join("; "),
+        customer_name: info?.name || null, customer_email: info?.email || null, customer_phone: info?.phone || null,
+        language: lang, quote_status: status || "pending",
+        state: { v: 1, kind: "duct", property, duct: ductAnswersForOffice(), lang, customerInfo: info || null },
+      } });
+      return row || null;
+    } catch (e) { console.warn("Duct quote record error:", e); return null; }
+  };
+  const emailDuctQuote = async (info) => {
+    const row = await recordDuctQuote(info, "emailed");
+    if (row?.id) setQuoteId(row.id);
+    const q = ductQuoteFor(duct, catalog, lang);
+    const r = await fetch("/api/send-email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: info.email.trim(),
+        subject: lang === "es" ? `Su Cotización de Limpieza de Ductos — ${brand.name}` : `Your Duct Cleaning Quote — ${brand.name}`,
+        htmlContent: buildDuctQuoteEmailHtml({ lang, brandName: brand.name, customerName: info.name, address: property?.address, q, days: ductGuaranteeDays(catalog), links: quoteLinks(row) }),
+      }),
+    });
+    if (!r.ok) throw new Error(lang === "es" ? "No pudimos enviar el correo. Intente de nuevo en un momento." : "We couldn't send the email right now. Please try again in a moment.");
+    setCustomerInfo(info);
+    notifyOffice(`Duct cleaning quote emailed — ${info.name}`, [
+      ["Name", info.name], ["Email", info.email], ["Phone", info.phone], ["Contact by", info.contactPref], ["Address", property?.address],
+      ["Services", q.lines.map(l => l.label).join("; ")], ["Total", money2(q.total)], ["Quote #", row?.quote_reference || ""],
+    ]);
+  };
+  const finalizeDuctBooking = async (pay) => {
+    const q = ductQuoteFor(duct, catalog, "en");
+    const paid = pay?.status === "succeeded";
+    let ref = null;
+    try {
+      const row = await rpc("create_booking", { p: {
+        service_kind: "duct", quote_id: quoteId, customer_name: customerInfo?.name || null, customer_email: customerInfo?.email || null,
+        customer_phone: customerInfo?.phone || null, contact_preference: customerInfo?.contactPref || null,
+        install_date: installDate || null, install_address: property?.address || null,
+        payment_method: pay ? "card" : "on_site", payment_status: pay ? (paid ? "paid" : "processing") : "due_on_service",
+        deposit_amount: pay ? q.total : 0, deposit_paid_at: paid ? new Date().toISOString() : null, stripe_payment_intent: pay?.intentId || null,
+        booking_status: "confirmed", financing_status: "not_applicable",
+        equipment_summary: "Duct cleaning — " + q.lines.map(l => l.label).join("; "), total_price: q.total,
+        quote_lines: q.lines.filter(l => l.item).map(l => ({ item_id: l.item.id, qty: l.qty, label: l.label })),
+      } });
+      ref = row?.booking_reference || null;
+    } catch (e) { console.error("Duct booking error:", e); }
+    const finalRef = ref || `DCB-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`;
+    setBookingRef(finalRef);
+    const timeLabel = ductStartLabel(catalog, lang);
+    notifyOffice(`New duct cleaning booking ${finalRef} — ${customerInfo?.name || ""}`, [
+      ["Booking", finalRef + (ref ? "" : " (NOT SAVED — check the app database)")], ["Name", customerInfo?.name], ["Email", customerInfo?.email],
+      ["Phone", customerInfo?.phone], ["Contact by", customerInfo?.contactPref], ["Address", property?.address],
+      ["Service date", `${installDate} at ${ductStartLabel(catalog, "en")}`], ["Services", q.lines.map(l => l.label).join("; ")], ["Total", money2(q.total)],
+      ["Payment", pay ? `Card ${money2(q.total)} (${pay.status || ""}) ${pay.intentId || ""}` : "Pay on the day of service"],
+      ["Note", q.needsVisit ? "Sanitizing needs an in-person price (home over the largest tier)" : ""],
+    ]);
+    if (customerInfo?.email) {
+      const qc = ductQuoteFor(duct, catalog, lang);
+      fetch("/api/send-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: customerInfo.email,
+          subject: lang === "es" ? `Servicio Confirmado - ${finalRef}` : `Service Confirmed - ${finalRef}`,
+          htmlContent: buildDuctQuoteEmailHtml({ lang, brandName: brand.name, customerName: customerInfo?.name, address: property?.address, q: qc, days: ductGuaranteeDays(catalog), booked: true, date: installDate, timeLabel, paid }),
+        }),
+      }).catch(e => console.error("Duct confirmation email error:", e));
+    }
+    if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
+      const d = installDate ? new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+      const body = lang === "es"
+        ? `${brand.name}: Limpieza de ductos confirmada! Ref: ${finalRef}. ${d} a las ${timeLabel}.`
+        : `${brand.name}: Duct cleaning confirmed! Ref: ${finalRef}. ${d} at ${timeLabel}.`;
+      fetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: customerInfo.phone, message: body }) }).catch(() => {});
+    }
+    go("confirmation");
+  };
+
   // Save/resume snapshot
   const buildStateSnapshot = () => ({
-    lang, screen, property, answers, quote, brandFamily, selectedBrands, selectedEq, savedOptions, customerInfo, quoteId,
+    lang, screen, property, answers, quote, brandFamily, selectedBrands, selectedEq, savedOptions, customerInfo, quoteId, mode, duct,
   });
   const restoreFromSnapshot = (snap) => {
     if (!snap) return;
     if (snap.lang) setLang(snap.lang);
+    if ((snap.mode === "duct") !== (mode === "duct")) return; // a saved session from the other app path
+    if (snap.mode === "duct") {
+      if (snap.property) setProperty(snap.property);
+      if (snap.duct) setDuct(snap.duct);
+      if (snap.customerInfo) setCustomerInfo(snap.customerInfo);
+      if (snap.quoteId) setQuoteId(snap.quoteId);
+      const dk = ["s2", "s3", "dHome", "dVents", "dLast", "dType", "dRooms", "dAhu", "dServices", "dQuote", "dForm", "dSchedule"];
+      setScreen(dk.includes(snap.screen) ? snap.screen : snap.property ? "dHome" : "d1");
+      return;
+    }
     if (snap.property) setProperty(snap.property);
     if (snap.answers) setAnswers(snap.answers);
     if (snap.quote && snap.quote.tons) setQuote(snap.quote);
@@ -3857,12 +4247,12 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!resumeChecked || screen === "s1") return;
+    if (!resumeChecked || screen === "s1" || screen === "d1") return;
     try {
       if (screen === "confirmation") localStorage.removeItem("acc_progress");
       else localStorage.setItem("acc_progress", JSON.stringify(buildStateSnapshot()));
     } catch (e) {}
-  }, [screen, property, answers, quote, brandFamily, selectedBrands, selectedEq, savedOptions, customerInfo, quoteId, resumeChecked]);
+  }, [screen, property, answers, quote, brandFamily, selectedBrands, selectedEq, savedOptions, customerInfo, quoteId, resumeChecked, duct]);
 
   useEffect(() => {
     const checkResume = async () => {
@@ -3874,6 +4264,21 @@ export default function App() {
           const res = await rpc("get_quote_resume", { p_ref: qRef, p_token: qTok });
           const st = res?.state;
           window.history.replaceState({}, "", window.location.pathname);
+          if (st?.kind === "duct" && st?.duct) {
+            if (st.lang) setLang(st.lang);
+            setMode("duct");
+            setProperty(st.property || null);
+            setDuct(st.duct);
+            if (st.customerInfo) setCustomerInfo(st.customerInfo);
+            setQuoteId(res.quote_id || null);
+            setFormMode("schedule");
+            const ci = st.customerInfo;
+            const hasContact = ci && ci.name && ci.email && ci.phone;
+            if (res.expired) setLinkNotice("expired");
+            setScreen(!res.expired && params.get("a") === "approve" ? (hasContact ? "dSchedule" : "dForm") : "dQuote");
+            setResumeChecked(true);
+            return;
+          }
           if (st?.eq && st?.property) {
             if (st.lang) setLang(st.lang);
             setProperty(st.property);
@@ -3964,7 +4369,7 @@ export default function App() {
 
       {screen === "s1" && <S1_Landing {...common} onStart={() => go("s2")} />}
 
-      {screen === "s2" && <S2_Address {...common} onFound={p => { setProperty(p); go("s3"); }} onBack={() => go("s1")} />}
+      {screen === "s2" && <S2_Address {...common} onFound={p => { setProperty(p); go("s3"); }} onBack={() => go(mode === "duct" ? "d1" : "s1")} />}
 
       {screen === "s3" && <S3_ConfirmHome {...common} property={property}
         onConfirm={(verified) => {
@@ -3974,8 +4379,9 @@ export default function App() {
             const isManufactured = type.includes("manufactured") || type.includes("mobile");
             const isApt = type.includes("condo") || type.includes("apartment") || type.includes("multi");
             setAnswers(p => ({ ...p, detectedHomeType: isManufactured ? "manufactured" : isApt ? "apartment" : "site-built", detectedSqft: verified.sqft || p.detectedSqft }));
+            if (mode === "duct") setDuct(d => ({ ...d, sqft: d.sqft || verified.sqft || null }));
           }
-          go("s4");
+          go(mode === "duct" ? "dHome" : "s4");
         }}
         onEdit={() => go("s2")} onBack={() => go("s2")} />}
 
@@ -4054,7 +4460,7 @@ export default function App() {
         onSavedQuotes={() => go("savedQuotes")}
         onBack={() => go(selectedBrands.length ? "s14" : "savedQuotes")} />}
 
-      {screen === "savedQuotes" && ready && <S_SavedQuotes {...common} quote={quote} saved={savedOptions}
+      {screen === "savedQuotes" && ready && <S_SavedQuotes {...common} quote={quote} catalog={catalog} saved={savedOptions}
         onOpen={eq => { setSelectedEq(eq); go("s15"); }}
         onEmail={eq => { setEmailEq(eq); setFormMode("email"); setFormReturn("savedQuotes"); go("s16"); }}
         onRemove={removeOption} onMore={() => go("s12")} onBack={() => go(selectedEq ? "s15" : "s14")} />}
@@ -4073,8 +4479,8 @@ export default function App() {
         onViewTerms={() => go("terms")} onViewPrivacy={() => go("privacy")}
         onBack={() => go(formReturn)} />}
 
-      {screen === "terms" && <LegalDocScreen brand={brand} t={t} title="Terms of Service" sections={TERMS_OF_SERVICE_SECTIONS} onBack={() => go(msChoice ? "msRequest" : "s16")} onCG={cg} />}
-      {screen === "privacy" && <LegalDocScreen brand={brand} t={t} title="Privacy Policy" sections={PRIVACY_POLICY_SECTIONS} onBack={() => go(msChoice ? "msRequest" : "s16")} onCG={cg} />}
+      {screen === "terms" && <LegalDocScreen brand={brand} t={t} title="Terms of Service" sections={TERMS_OF_SERVICE_SECTIONS} onBack={() => go(mode === "duct" ? "dForm" : msChoice ? "msRequest" : "s16")} onCG={cg} />}
+      {screen === "privacy" && <LegalDocScreen brand={brand} t={t} title="Privacy Policy" sections={PRIVACY_POLICY_SECTIONS} onBack={() => go(mode === "duct" ? "dForm" : msChoice ? "msRequest" : "s16")} onCG={cg} />}
 
       {screen === "schedule" && (
         <CheckoutCalendar {...common} paymentInfo={paymentInfo}
@@ -4106,10 +4512,93 @@ export default function App() {
           onSuccess={info => { setPaymentInfo(info); finalizeBooking(info); }} onBack={() => go("checkout")} />
       )}
 
-      {screen === "confirmation" && (
+      {screen === "confirmation" && mode !== "duct" && (
         <CheckoutConfirmation brand={brand} t={t} bookingRef={bookingRef} installDate={installDate} customerInfo={customerInfo}
           onDone={handleStartOver} />
       )}
+      {screen === "confirmation" && mode === "duct" && (
+        <CheckoutConfirmation brand={brand} t={t} bookingRef={bookingRef} installDate={installDate} customerInfo={customerInfo}
+          titleText={L(lang, "You're All Set!", "¡Todo Listo!")}
+          descText={L(lang, "Your duct cleaning is scheduled. We've sent a confirmation to your email.", "Su limpieza de ductos está programada. Le enviamos una confirmación a su correo.")}
+          dateLabel={L(lang, "Service Date", "Fecha de Servicio")} timeText={ductStartLabel(catalog, lang)}
+          steps={[
+            L(lang, "You'll receive an email confirmation within minutes", "Recibirá una confirmación por correo en minutos"),
+            L(lang, "Our office may call to confirm the details", "Nuestra oficina puede llamarle para confirmar los detalles"),
+            L(lang, "Our technicians arrive on your scheduled day — pay then by check, card or cash if you haven't already", "Nuestros técnicos llegan el día programado — pague entonces con cheque, tarjeta o efectivo si aún no lo hizo"),
+          ]}
+          onDone={handleStartOver} />
+      )}
+
+      {/* ── Duct cleaning path ── */}
+      {screen === "d1" && <S_DuctLanding {...common} onStart={() => go("s2")} />}
+      {mode === "duct" && !catalog && ["dHome", "dVents", "dLast", "dType", "dRooms", "dAhu", "dServices", "dQuote", "dForm", "dSchedule", "dPay", "dCard"].includes(screen) && (
+        <Shell t={t} brand={brand} onCG={cg} onStartOver={handleStartOver} showBack onBack={() => go("s3")}>
+          {catalogError ? (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+              <h2 style={{ fontWeight: 900, color: C.navy, marginBottom: 8 }}>{L(lang, "We hit a snag", "Tuvimos un problema")}</h2>
+              <BlueBtn onClick={() => { setCatalogError(false); Catalog.load().then(setCatalog).catch(() => setCatalogError(true)); }} style={{ maxWidth: 240 }}>← {L(lang, "Try Again", "Intentar de Nuevo")}</BlueBtn>
+            </div>
+          ) : <CenteredSpinner text={L(lang, "Loading…", "Cargando…")} />}
+        </Shell>
+      )}
+      {catalog && <>
+        {screen === "dHome" && <S_HomeType {...common} detected={duct.homeKind || detectedKind}
+          sub={L(lang, "This helps us price your dryer vent and plan the visit.", "Esto nos ayuda a cotizar el ducto de secadora y planear la visita.")}
+          onSelect={v => { setDuct(d => ({ ...d, homeKind: v })); go("dVents"); }} onBack={() => go("s3")} />}
+        {screen === "dVents" && <S_DuctChoice {...common} title={L(lang, "Where Are Your Vents Located?", "¿Dónde Están Sus Rejillas?")}
+          sub={L(lang, "Where are they mostly located?", "¿Dónde se encuentran principalmente?")} opts={DUCT_VENTS} selected={duct.vents}
+          onSelect={v => { setDuct(d => ({ ...d, vents: v })); go("dLast"); }} onBack={() => go("dHome")} />}
+        {screen === "dLast" && <S_DuctChoice {...common} title={L(lang, "When Were Your Ducts Last Cleaned?", "¿Cuándo Se Limpiaron Sus Ductos por Última Vez?")}
+          sub={L(lang, "This lets us know to what depth of cleaning you may need.", "Esto nos indica qué tan profunda debe ser la limpieza.")} opts={DUCT_LAST} selected={duct.lastCleaned}
+          onSelect={v => { setDuct(d => ({ ...d, lastCleaned: v })); go("dType"); }} onBack={() => go("dVents")} />}
+        {screen === "dType" && <S_DuctChoice {...common} title={L(lang, "What Type Ducts Do You Have?", "¿Qué Tipo de Ductos Tiene?")}
+          sub={L(lang, "This helps us to decide what type of equipment to use to clean them.", "Esto nos ayuda a decidir qué equipo usar para limpiarlos.")} opts={DUCT_TYPES} selected={duct.ductType}
+          onSelect={v => { setDuct(d => ({ ...d, ductType: v })); go("dRooms"); }} onBack={() => go("dLast")} />}
+        {screen === "dRooms" && <S_DuctRooms {...common} rooms={duct.rooms} sqft={duct.sqft || property?.sqft} catalog={catalog}
+          onContinue={(rooms, sqft) => { setDuct(d => ({ ...d, rooms, sqft })); go("dAhu"); }} onBack={() => go("dType")} />}
+        {screen === "dAhu" && <S_DuctChoice {...common} title={L(lang, "Where is Your Air Handler Located?", "¿Dónde Está Su Manejador de Aire?")}
+          sub={L(lang, "This helps determine what services we can offer based upon accessibility.", "Esto determina qué servicios podemos ofrecer según el acceso.")} opts={DUCT_AHU} selected={duct.ahu}
+          onSelect={v => { setDuct(d => ({ ...d, ahu: v })); go("dServices"); }} onBack={() => go("dRooms")} />}
+        {screen === "dServices" && <S_DuctServices {...common} ahu={duct.ahu} selected={duct.services}
+          onContinue={services => { setDuct(d => ({ ...d, services })); go("dQuote"); }} onBack={() => go("dAhu")} />}
+        {screen === "dQuote" && linkNotice === "expired" && (
+          <div style={{ maxWidth: 430, margin: "0 auto", padding: "10px 20px 0" }}>
+            <div style={{ background: "#fefce8", border: `1.5px solid ${C.gold}`, borderRadius: 12, padding: "10px 14px", fontSize: 13, color: "#854d0e", fontWeight: 700 }}>
+              {L(lang, "The guarantee on your earlier quote has ended, so this is today's price for the same services.", "La garantía de su cotización anterior terminó; este es el precio de hoy para los mismos servicios.")}
+            </div>
+          </div>
+        )}
+        {screen === "dQuote" && <S_DuctQuote {...common} duct={duct} catalog={catalog}
+          onApprove={() => { setLinkNotice(null); setFormMode("schedule"); go("dForm"); }}
+          onEdit={() => go("dServices")}
+          onEmail={() => { setFormMode("email"); go("dForm"); }}
+          onBack={() => go("dServices")} />}
+        {screen === "dForm" && <S_AlmostThere {...common} mode={formMode} initial={customerInfo}
+          summaryText={L(lang, "Duct Cleaning & Dryer Vent Cleaning", "Limpieza de Ductos y Ducto de Secadora") + " — " + money2(ductQuoteFor(duct, catalog, lang).total)}
+          continueText={L(lang, "Continue to Pick My Day", "Continuar para Elegir Mi Día")}
+          onEmailSend={emailDuctQuote}
+          onAfterEmail={() => go("dQuote")}
+          onContinue={async info => {
+            setCustomerInfo(info);
+            const row = await recordDuctQuote(info, "approved");
+            if (row?.id) setQuoteId(row.id);
+            go("dSchedule");
+          }}
+          onViewTerms={() => go("terms")} onViewPrivacy={() => go("privacy")}
+          onBack={() => go("dQuote")} />}
+        {screen === "dSchedule" && <CheckoutCalendar {...common} daysUrl={DUCT_DAYS_URL}
+          titleText={L(lang, "Choose Your Service Day", "Elija Su Día de Servicio")}
+          descText={L(lang, `We arrive at ${ductStartLabel(catalog, "en")} on the day you choose.`, `Llegamos a las ${ductStartLabel(catalog, "es")} el día que elija.`)}
+          noteText={L(lang, "Need to change it later? Just call us.", "¿Necesita cambiarlo después? Solo llámenos.")}
+          onConfirm={date => { setInstallDate(date.available_date); go("dPay"); }}
+          onBack={() => go("dForm")} />}
+        {screen === "dPay" && installDate && <S_DuctPay {...common} total={ductQuoteFor(duct, catalog, lang).total} date={installDate} timeLabel={ductStartLabel(catalog, lang)}
+          onPayLater={() => finalizeDuctBooking(null)} onPayNow={() => go("dCard")} onBack={() => go("dSchedule")} />}
+        {screen === "dCard" && <CheckoutStripe {...common} method="card" deposit={ductQuoteFor(duct, catalog, "en").total} customerInfo={customerInfo}
+          descriptionText={`${brand.name} - Duct Cleaning ${installDate || ""}`} titleText={L(lang, "Pay by Card", "Pagar con Tarjeta")}
+          onSuccess={info => { setPaymentInfo(info); finalizeDuctBooking(info); }} onBack={() => go("dPay")} />}
+      </>}
 
       {/* ── Mini-split path ── */}
       {screen === "ms1" && <S_MiniSplitStart {...common}
