@@ -1037,9 +1037,112 @@ function buildCustomerContext(ctx) {
   return parts.length > 0 ? parts.join(". ") + "." : "The customer has not started their estimate yet.";
 }
 
+// Duct cleaning version of the customer context and the Comfort Guide's instructions.
+function buildDuctContext(ctx) {
+  const d = ctx?.duct || {};
+  const parts = [];
+  if (ctx?.property?.address) parts.push(`Property address: ${ctx.property.address}`);
+  const sq = d.sqft || ctx?.property?.sqft;
+  if (sq) parts.push(`Heated/cooled square feet: ${sq}`);
+  const lab = (list, id) => { const r = list.find(x => x[0] === id); return r ? r[1] : null; };
+  const homeLabels = { sitebuilt: "site-built single-family", plex: "duplex/triplex/quad", mobile: "mobile home", modular: "modular home", apt: "multi-story apartment or condo", multistory: "multi-story single-family" };
+  if (d.homeKind) parts.push(`Home type: ${homeLabels[d.homeKind] || d.homeKind}`);
+  if (d.vents) parts.push(`Vents are mostly: ${lab(DUCT_VENTS, d.vents)}`);
+  if (d.lastCleaned) parts.push(`Ducts last cleaned: ${lab(DUCT_LAST, d.lastCleaned)}`);
+  if (d.ductType) parts.push(`Duct type: ${lab(DUCT_TYPES, d.ductType)}`);
+  if (d.rooms) {
+    const r = DUCT_ROOMS.filter(([k]) => Number(d.rooms[k]) > 0).map(([k, en]) => `${d.rooms[k]} ${en}`);
+    if (r.length) parts.push(`Rooms: ${r.join(", ")}`);
+  }
+  if (d.ahu) parts.push(`Air handler location: ${lab(DUCT_AHU, d.ahu)}${d.ahu === "ceiling" || d.ahu === "attic" ? " (so blower and coil cleaning are not offered online — they need an in-person look)" : ""}`);
+  const q = ctx?.ductQuote;
+  if (q && q.lines.length && (d.services || []).some(k => k !== "covers")) {
+    parts.push(`Customer's current quote (real prices from our pricebook): ${q.lines.map(l => `${l.label} — $${(l.qty * l.price).toFixed(2)}`).join("; ")}. Total $${q.total.toFixed(2)}${q.tax ? ` including $${q.tax.toFixed(2)} sales tax` : ""}`);
+    if (q.needsVisit) parts.push("Sanitizing for this home size needs an in-person price, so it is not in the total");
+  } else {
+    parts.push("The customer has not chosen services yet, so there is no quote yet");
+  }
+  const screens = {
+    d1: "Landing page", s2: "Entering their address", s3: "Confirming their home details", dHome: "Choosing their home type",
+    dVents: "Saying where their vents are", dLast: "Saying when the ducts were last cleaned", dType: "Choosing their duct type",
+    dRooms: "Counting rooms and confirming square feet", dAhu: "Saying where the air handler is", dServices: "Choosing services",
+    dQuote: "Reviewing their guaranteed quote", dForm: "Entering contact information", dSchedule: "Choosing a service day",
+    dPay: "Choosing to pay now by card or on the day of service", dCard: "Entering card details", confirmation: "Booking confirmed",
+  };
+  if (ctx?.screen) parts.push(`Current screen: ${screens[ctx.screen] || ctx.screen}`);
+  return parts.join(". ") + ".";
+}
+
+function ductGuidePrompt(lang, contextSnapshot, ctx) {
+  const days = ctx?.guaranteeDays || 14;
+  const start = ctx?.startLabel || "9:00 AM";
+  const warranty = String(ctx?.warrantyText || "").trim();
+  if (lang === "es") return `Eres el Guía de Confort — un asesor virtual cálido y honesto de Aire Azul, una empresa de HVAC que sirve los condados de Marion, Lake, Sumter, Levy, Citrus y Alachua y The Villages en el Centro de Florida. En esta aplicación el cliente obtiene una cotización garantizada de LIMPIEZA DE DUCTOS y LIMPIEZA DEL DUCTO DE SECADORA, sin vendedores.
+
+CONTEXTO ACTUAL DEL CLIENTE:
+${contextSnapshot}
+
+DATOS DEL SERVICIO:
+- Retiramos y limpiamos todas las rejillas de suministro y de retorno donde sea posible, limpiamos los ductos a fondo y volvemos a colocar las rejillas. Cubrimos ligeramente los muebles para evitar que les caiga polvo.
+- La desinfección se hace a través de los retornos y el sistema de A/C. Personas y mascotas no necesitan salir; las aves deben retirarse por 30 minutos.
+- Servicios opcionales: limpiar el motor y la rueda del soplador, limpiar el serpentín evaporador en sitio, instalar una luz UV en el manejador de aire, y limpiar el ducto de la secadora. Si el manejador de aire cuelga del techo o está en el ático, la limpieza del soplador y del serpentín no se ofrece en línea — requiere una visita.
+- La cotización está garantizada por ${days} días. El precio viene de nuestra lista de precios real según las respuestas del cliente.
+- No se paga nada por adelantado. Se paga el día del servicio con cheque, tarjeta o efectivo; si lo desea, puede pagar con tarjeta por adelantado en la aplicación — es totalmente opcional.
+- Llegamos a las ${start} el día que el cliente elija.
+- ${warranty ? `Garantía: ${warranty}.` : "Tenemos una garantía de rendimiento; para los detalles, el cliente puede preguntar a nuestro equipo."}
+
+HONESTIDAD (muy importante):
+- No todas las casas necesitan limpieza de ductos con un calendario fijo. Es más útil cuando hay polvo o residuos visibles saliendo de las rejillas, moho visible dentro de los ductos, señales de roedores o insectos, después de una remodelación, o si nunca se han limpiado. Si la casa no lo necesita, dilo.
+- Nunca afirmes que la limpieza de ductos cura alergias o asma, ni que garantiza facturas de luz más bajas.
+- Un ducto de secadora tapado con pelusa es un riesgo de incendio real y reduce la eficiencia de la secadora; recomendar su limpieza es honesto.
+
+REGLAS:
+- Puedes repetir los precios y el total que aparecen en el contexto de la cotización actual del cliente. Nunca inventes precios para servicios que no están en ella; di que los verá al elegir los servicios en la aplicación.
+- Si el cliente quiere que se le envíe la cotización y ya hay una cotización, pide nombre, correo y teléfono, y usa la herramienta send_estimate. Nunca digas que la enviaste sin usarla.
+- Si prefiere que alguien venga en persona, pide nombre y teléfono y usa request_home_visit; sé honesto en que alguien le llamará.
+- Mantente en el tema: limpieza de ductos, ducto de secadora, calidad del aire interior relacionada, el proceso de la aplicación y las políticas de la empresa. No cotices reemplazo de equipos aquí.
+- Responde siempre en español, de forma breve (2 a 4 oraciones) y nunca seas insistente.`;
+  return `You are the Comfort Guide — a warm, honest virtual advisor for Air-Care Connect, an HVAC company serving Marion, Lake, Sumter, Levy, Citrus, and Alachua Counties plus The Villages in Central Florida. In this app the customer gets a guaranteed quote for DUCT CLEANING and DRYER VENT CLEANING, with no salesperson involved.
+
+CURRENT CUSTOMER CONTEXT:
+${contextSnapshot}
+
+ABOUT THE SERVICE:
+- We remove and clean all supply and return vents where possible, thoroughly clean the ducts, then replace the vents. We lightly cover furniture where possible so no dust falls on it.
+- Sanitizing is done through the returns and the A/C system. People and pets don't need to leave; birds should be removed for 30 minutes.
+- Optional services: clean the blower motor and wheel, clean the evaporator coil in place, install a UV light in the air handler, and clean the dryer vent. When the air handler hangs from the ceiling or sits in the attic, blower and coil cleaning aren't offered online — they need an in-person look.
+- The quote is guaranteed for ${days} days. Prices come straight from our real pricebook based on the customer's answers (rooms, vent location, air handler location, square feet for sanitizing, home type for the dryer vent).
+- Nothing is paid in advance. The customer pays on the day of service by check, card or cash. If they want, they can prepay by card in the app — that is entirely optional, never imply it's required.
+- We arrive at ${start} on the day the customer picks.
+- ${warranty ? `Warranty: ${warranty}.` : "We offer a performance warranty; for the details, the customer can ask our team."}
+
+HONESTY (this matters most):
+- Not every home needs duct cleaning on a schedule. It's most worthwhile when dust or debris visibly blows from the vents, there's visible mold growth inside the ducts, there are signs of rodents or insects, after a renovation, or if the ducts have never been cleaned. If what the customer describes doesn't call for it, say so plainly — it's fine to tell them they may not need it yet.
+- Never claim duct cleaning cures allergies or asthma, or guarantees lower energy bills.
+- A lint-clogged dryer vent is a real fire risk and makes the dryer work harder, so recommending dryer vent cleaning is honest advice.
+- "Last cleaned" and "duct type" don't change the price — they help the crew plan the job.
+
+HOW TO HELP:
+- Explain any question or service on the current screen in plain language.
+- You may repeat the line items and total shown in the customer's current quote context above. Never make up prices for services that aren't in it — say they'll see the exact price when they choose services in the app.
+- If they hesitate, acknowledge it, note there's no rush (the price holds for ${days} days and nothing is due up front), and offer a concrete next step: email the quote, or save progress and come back.
+
+SENDING THE QUOTE: If a customer wants their quote emailed or texted and a quote exists, collect name, email and phone conversationally, then use the send_estimate tool. Never say you sent it unless you used the tool. If there's no quote yet, explain they'll get one right after choosing services.
+
+IN-PERSON VISIT: If the customer prefers someone come look first (or asks about blower/coil cleaning with an attic or ceiling-hung air handler), collect name and phone (email optional) and use request_home_visit. Be honest that a team member will call — nothing is booked automatically.
+
+GUARDRAILS:
+- Stay on topic: duct cleaning, dryer vents, related indoor air quality, this app's process, and company policies. For AC replacement questions, say this app is for duct cleaning and they can get a system quote from the main estimate app.
+- Keep replies conversational and short — 2-4 sentences. Never be pushy.`;
+}
+
 // ── COMFORT GUIDE ──────────────────────────────────────────────────────────────
-function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
-  const [msgs, setMsgs] = useState([{ role: "assistant", content: t.cgWelcome }]);
+function ComfortGuide({ lang, brand, t, onClose, customerContext, onDuctEmail }) {
+  const isDuct = customerContext?.mode === "duct";
+  const ductWelcome = L(lang,
+    "Hi! I'm your Comfort Guide. I can explain how duct cleaning, sanitizing and dryer vent cleaning work, help you decide what your home actually needs, or answer questions about your quote. What's on your mind?",
+    "¡Hola! Soy su Guía de Confort. Puedo explicarle cómo funciona la limpieza de ductos, la desinfección y la limpieza del ducto de secadora, ayudarle a decidir lo que su casa realmente necesita o responder preguntas sobre su cotización. ¿En qué puedo ayudarle?");
+  const [msgs, setMsgs] = useState([{ role: "assistant", content: isDuct ? ductWelcome : t.cgWelcome }]);
   const [input, setInput] = useState(""); const [busy, setBusy] = useState(false);
   const [sendStatus, setSendStatus] = useState(null); // null | "sending" | "sent" | "error"
   const endRef = useRef(null);
@@ -1061,7 +1164,7 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
           customer_name: name,
           customer_email: email || null,
           customer_phone: phone,
-          notes: notes || null,
+          notes: (isDuct ? "[Duct cleaning] " : "") + (notes || "") || null,
           language: lang,
           lead_status: "new",
           organization_id: 1,
@@ -1074,7 +1177,7 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             to: "info@air-careconnect.com",
-            subject: `New Home Visit Request - ${name}`,
+            subject: `New Home Visit Request${isDuct ? " (Duct Cleaning)" : ""} - ${name}`,
             htmlContent: `
               <div style="font-family: sans-serif; max-width: 480px;">
                 <h2 style="color: #163E64;">New Home Visit Request</h2>
@@ -1186,10 +1289,11 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext }) {
     const next = [...msgs, { role: "user", content: input.trim() }];
     setMsgs(next); setInput(""); setBusy(true);
 
-    const contextSnapshot = buildCustomerContext(customerContext);
+    const contextSnapshot = isDuct ? buildDuctContext(customerContext) : buildCustomerContext(customerContext);
+    const ductHasQuote = isDuct && customerContext?.ductQuote?.lines?.length > 0 && (customerContext?.duct?.services || []).some(k => k !== "covers");
 
     try {
-      const sys = lang === "en"
+      const sys = isDuct ? ductGuidePrompt(lang, contextSnapshot, customerContext) : lang === "en"
         ? `You are the Comfort Guide — a warm, knowledgeable virtual advisor for Air-Care Connect, a professional HVAC replacement company serving Marion, Lake, Sumter, Levy, Citrus, and Alachua Counties plus The Villages in Central Florida.
 
 YOUR ROLE: Help customers feel confident and informed as they get an instant AC replacement quote through this app, entirely without sales pressure. You are not a salesperson — you are a trusted guide. Your job is to remove confusion and hesitation so the customer can make their own confident decision.
@@ -1340,7 +1444,7 @@ REGLAS:
         body: JSON.stringify({
           system: sys,
           messages: next.map(m => ({ role: m.role, content: m.content })),
-          tools: [{
+          tools: [...(isDuct && !ductHasQuote ? [] : [{
             name: "send_estimate",
             description: "Call this ONLY once you have collected the customer's name, email, AND phone number, AND they have clearly confirmed they want their estimate sent to them. Do not call this if any of the three fields are missing or unconfirmed.",
             input_schema: {
@@ -1352,7 +1456,7 @@ REGLAS:
               },
               required: ["name", "email", "phone"],
             },
-          }, {
+          }]), {
             name: "request_home_visit",
             description: "Call this ONLY once you have collected the customer's name and phone number (email optional), AND they have clearly confirmed they want a team member to schedule an in-person home visit/estimate. This is for customers who prefer a live, in-person conversation rather than continuing with the self-service app. Do not call this if name or phone is missing or unconfirmed.",
             input_schema: {
@@ -1373,6 +1477,17 @@ REGLAS:
       if (d.toolUse?.name === "send_estimate") {
         const { name, email, phone } = d.toolUse.input;
         setMsgs(p => [...p, { role: "assistant", content: d.text || (lang === "es" ? "¡Perfecto! Enviando su cotización ahora..." : "Perfect! Sending your estimate now...") }]);
+        if (isDuct && onDuctEmail) {
+          setSendStatus("sending");
+          let ok = true;
+          try { await onDuctEmail({ name, email, phone, contactPref: "both" }); setSendStatus("sent"); }
+          catch (e) { ok = false; setSendStatus("error"); }
+          setMsgs(p => [...p, { role: "assistant", content: ok
+            ? L(lang, `✅ Done! Your quote is on its way to ${email}, with a button to approve it and pick your day whenever you're ready.`, `✅ ¡Listo! Su cotización va camino a ${email}, con un botón para aprobarla y elegir su día cuando esté listo.`)
+            : L(lang, "I couldn't send it just now — please try again in a moment, or use the Email This Quote button.", "No pude enviarla en este momento — intente de nuevo en un momento, o use el botón Enviar Cotización por Email.") }]);
+          setBusy(false);
+          return;
+        }
         await sendEstimateToCustomer(name, email, phone);
         setMsgs(p => [...p, { role: "assistant", content: lang === "es"
           ? `✅ ¡Listo! Hemos enviado su cotización a ${email}${phone ? " y por mensaje de texto a " + phone : ""}.`
@@ -4361,7 +4476,11 @@ export default function App() {
       <FontLoader />
       <LangToggle lang={lang} setLang={setLang} />
       {showCG && <ComfortGuide lang={lang} brand={brand} t={t} onClose={() => setShowCG(false)}
-        customerContext={{ screen, property, answers, tons: quote?.tons, adderTotal: quote?.adderTotal, brandFamily: brandFamily ? Plan.familyLabel(brandFamily, "en") : null, selectedEq }} />}
+        onDuctEmail={emailDuctQuote}
+        customerContext={mode === "duct"
+          ? { mode, screen, property, duct, ductQuote: catalog ? ductQuoteFor(duct, catalog, "en") : null,
+              guaranteeDays: ductGuaranteeDays(catalog), startLabel: ductStartLabel(catalog, lang), warrantyText: ductSettings(catalog?.ductSettings).warranty_text }
+          : { screen, property, answers, tons: quote?.tons, adderTotal: quote?.adderTotal, brandFamily: brandFamily ? Plan.familyLabel(brandFamily, "en") : null, selectedEq }} />}
 
       {showSaveModal && (
         <SaveProgressModal t={t} lang={lang} customerInfo={customerInfo} onClose={() => setShowSaveModal(false)} onSaved={saveProgressNow} />
