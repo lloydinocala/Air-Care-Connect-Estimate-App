@@ -3584,7 +3584,7 @@ function CheckoutCalendar({ brand, t, lang, paymentInfo, daysUrl, titleText, des
         // installs (installs per day, days, minimum notice) and install jobs already on the calendar.
         const r = await fetch(daysUrl || INSTALL_DAYS_URL);
         const body = await r.json();
-        const data = (Array.isArray(body?.days) ? body.days : []).map(d => ({ available_date: d.available_date, booked_slots: d.booked ?? 0, max_slots: d.max_slots ?? 1 }));
+        const data = (Array.isArray(body?.days) ? body.days : []).map(d => ({ ...d, available_date: d.available_date, booked_slots: d.booked ?? 0, max_slots: d.max_slots ?? 1 }));
         if (data.length) {
           const first = new Date(data[0].available_date + "T00:00:00"), now0 = new Date();
           setMonthOffset(Math.max(0, (first.getFullYear() - now0.getFullYear()) * 12 + first.getMonth() - now0.getMonth()));
@@ -3733,8 +3733,11 @@ const ductGuaranteeDate = (lang, days) => {
   const d = new Date(); d.setDate(d.getDate() + days);
   return d.toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "long", day: "numeric", year: "numeric" });
 };
-const ductStartLabel = (catalog, lang) => {
-  const st = String(ductSettings(catalog?.ductSettings).start_time || "09:00");
+// Arrival time for the chosen window: morning (start_time, default 9:00) or early afternoon
+// (afternoon_time, default 1:00 PM) — both set in Journey → Estimate App Setup → Duct Cleaning App.
+const ductStartLabel = (catalog, lang, win) => {
+  const cfg = ductSettings(catalog?.ductSettings);
+  const st = String((win === "pm" ? cfg.afternoon_time || "13:00" : cfg.start_time) || "09:00");
   const [h, m] = st.split(":").map(Number);
   const d = new Date(2000, 0, 1, h || 9, m || 0);
   return d.toLocaleTimeString(lang === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit" });
@@ -3921,6 +3924,36 @@ function S_DuctQuote({ brand, t, lang, duct, catalog, onApprove, onEdit, onEmail
   );
 }
 
+function S_DuctTime({ brand, t, lang, catalog, day, selected, onSelect, onBack, onCG, onSave, onStartOver }) {
+  const amOpen = day?.am_open !== false, pmOpen = day?.pm_open !== false;
+  const opt = (id, en, es, open, primary) => {
+    const label = L(lang, en, es);
+    const sub = open ? L(lang, `Arrive at ${ductStartLabel(catalog, "en", id)}`, `Llegada a las ${ductStartLabel(catalog, "es", id)}`) : L(lang, "Already booked that day", "Ya reservado ese día");
+    const st = { ...(selected === id ? { outline: `3px solid ${C.navy}` } : {}), ...(open ? {} : { opacity: 0.45, cursor: "not-allowed" }) };
+    return (
+      <div key={id} style={{ textAlign: "center" }}>
+        {primary ? <BlueBtn onClick={() => open && onSelect(id)} disabled={!open} style={st}>{label}</BlueBtn>
+          : <WhiteBtn onClick={() => open && onSelect(id)} style={st}>{label}</WhiteBtn>}
+        <p style={{ margin: "5px 0 0", fontSize: 12, color: C.navy, fontWeight: 600 }}>{sub}</p>
+      </div>
+    );
+  };
+  const when = day?.available_date ? new Date(day.available_date + "T00:00:00").toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
+  return (
+    <Shell t={t} brand={brand} onCG={onCG} showBack onBack={onBack} showSave onSave={onSave} onStartOver={onStartOver}>
+      <div style={{ padding: "14px 20px 0", textAlign: "center" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: C.black, margin: 0 }}>{L(lang, "What Time Would You Like For Your Appointment?", "¿A Qué Hora Le Gustaría Su Cita?")}</h1>
+        {when && <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{when}</p>}
+      </div>
+      <div style={{ padding: "26px 20px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+        {opt("am", "Morning", "Mañana", amOpen, true)}
+        {opt("pm", "Early Afternoon", "Primera Hora de la Tarde", pmOpen, false)}
+      </div>
+      <div style={{ padding: "10px 20px 0" }}><TrustRow items={[t.noApptShort, t.noCallShort]} /></div>
+    </Shell>
+  );
+}
+
 function S_DuctPay({ brand, t, lang, total, date, timeLabel, onPayNow, onPayLater, onBack, onCG }) {
   const day = new Date(date + "T00:00:00").toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "long", day: "numeric" });
   return (
@@ -4055,6 +4088,7 @@ export default function App() {
   const [lang, setLang] = useState("en");
   const [mode, setMode] = useState(() => (startsInDuctMode() ? "duct" : "system"));
   const [duct, setDuct] = useState({});
+  const [ductDay, setDuctDay] = useState(null); // the picked day, with which windows are still open
   const [screen, setScreen] = useState(() => (startsInDuctMode() ? "d1" : "s1"));
   const [property, setProperty] = useState(null);
   const [answers, setAnswers] = useState({});
@@ -4287,7 +4321,7 @@ export default function App() {
     let ref = null;
     try {
       const row = await rpc("create_booking", { p: {
-        service_kind: "duct", quote_id: quoteId, customer_name: customerInfo?.name || null, customer_email: customerInfo?.email || null,
+        service_kind: "duct", quote_id: quoteId, appointment_window: duct.window === "pm" ? "pm" : "am", customer_name: customerInfo?.name || null, customer_email: customerInfo?.email || null,
         customer_phone: customerInfo?.phone || null, contact_preference: customerInfo?.contactPref || null,
         install_date: installDate || null, install_address: property?.address || null,
         payment_method: pay ? "card" : "on_site", payment_status: pay ? (paid ? "paid" : "processing") : "due_on_service",
@@ -4300,11 +4334,11 @@ export default function App() {
     } catch (e) { console.error("Duct booking error:", e); }
     const finalRef = ref || `DCB-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 99999)).padStart(5, "0")}`;
     setBookingRef(finalRef);
-    const timeLabel = ductStartLabel(catalog, lang);
+    const timeLabel = ductStartLabel(catalog, lang, duct.window);
     notifyOffice(`New duct cleaning booking ${finalRef} — ${customerInfo?.name || ""}`, [
       ["Booking", finalRef + (ref ? "" : " (NOT SAVED — check the app database)")], ["Name", customerInfo?.name], ["Email", customerInfo?.email],
       ["Phone", customerInfo?.phone], ["Contact by", customerInfo?.contactPref], ["Address", property?.address],
-      ["Service date", `${installDate} at ${ductStartLabel(catalog, "en")}`], ["Services", q.lines.map(l => l.label).join("; ")], ["Total", money2(q.total)],
+      ["Service date", `${installDate} — ${duct.window === "pm" ? "Early afternoon" : "Morning"}, arrive ${ductStartLabel(catalog, "en", duct.window)}`], ["Services", q.lines.map(l => l.label).join("; ")], ["Total", money2(q.total)],
       ["Payment", pay ? `Card ${money2(q.total)} (${pay.status || ""}) ${pay.intentId || ""}` : "Pay on the day of service"],
       ["Note", q.needsVisit ? "Sanitizing needs an in-person price (home over the largest tier)" : ""],
     ]);
@@ -4479,7 +4513,7 @@ export default function App() {
         onDuctEmail={emailDuctQuote}
         customerContext={mode === "duct"
           ? { mode, screen, property, duct, ductQuote: catalog ? ductQuoteFor(duct, catalog, "en") : null,
-              guaranteeDays: ductGuaranteeDays(catalog), startLabel: ductStartLabel(catalog, lang), warrantyText: ductSettings(catalog?.ductSettings).warranty_text }
+              guaranteeDays: ductGuaranteeDays(catalog), startLabel: duct.window ? ductStartLabel(catalog, lang, duct.window) : `${ductStartLabel(catalog, lang, "am")} or ${ductStartLabel(catalog, lang, "pm")}`, warrantyText: ductSettings(catalog?.ductSettings).warranty_text }
           : { screen, property, answers, tons: quote?.tons, adderTotal: quote?.adderTotal, brandFamily: brandFamily ? Plan.familyLabel(brandFamily, "en") : null, selectedEq }} />}
 
       {showSaveModal && (
@@ -4639,7 +4673,7 @@ export default function App() {
         <CheckoutConfirmation brand={brand} t={t} bookingRef={bookingRef} installDate={installDate} customerInfo={customerInfo}
           titleText={L(lang, "You're All Set!", "¡Todo Listo!")}
           descText={L(lang, "Your duct cleaning is scheduled. We've sent a confirmation to your email.", "Su limpieza de ductos está programada. Le enviamos una confirmación a su correo.")}
-          dateLabel={L(lang, "Service Date", "Fecha de Servicio")} timeText={ductStartLabel(catalog, lang)}
+          dateLabel={L(lang, "Service Date", "Fecha de Servicio")} timeText={ductStartLabel(catalog, lang, duct.window)}
           steps={[
             L(lang, "You'll receive an email confirmation within minutes", "Recibirá una confirmación por correo en minutos"),
             L(lang, "Our office may call to confirm the details", "Nuestra oficina puede llamarle para confirmar los detalles"),
@@ -4650,7 +4684,7 @@ export default function App() {
 
       {/* ── Duct cleaning path ── */}
       {screen === "d1" && <S_DuctLanding {...common} onStart={() => go("s2")} />}
-      {mode === "duct" && !catalog && ["dHome", "dVents", "dLast", "dType", "dRooms", "dAhu", "dServices", "dQuote", "dForm", "dSchedule", "dPay", "dCard"].includes(screen) && (
+      {mode === "duct" && !catalog && ["dHome", "dVents", "dLast", "dType", "dRooms", "dAhu", "dServices", "dQuote", "dForm", "dSchedule", "dTime", "dPay", "dCard"].includes(screen) && (
         <Shell t={t} brand={brand} onCG={cg} onStartOver={handleStartOver} showBack onBack={() => go("s3")}>
           {catalogError ? (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, textAlign: "center" }}>
@@ -4708,12 +4742,14 @@ export default function App() {
           onBack={() => go("dQuote")} />}
         {screen === "dSchedule" && <CheckoutCalendar {...common} daysUrl={DUCT_DAYS_URL}
           titleText={L(lang, "Choose Your Service Day", "Elija Su Día de Servicio")}
-          descText={L(lang, `We arrive at ${ductStartLabel(catalog, "en")} on the day you choose.`, `Llegamos a las ${ductStartLabel(catalog, "es")} el día que elija.`)}
+          descText={L(lang, "Pick your day — next you'll choose a morning or early afternoon appointment.", "Elija su día — después elegirá una cita en la mañana o a primera hora de la tarde.")}
           noteText={L(lang, "Need to change it later? Just call us.", "¿Necesita cambiarlo después? Solo llámenos.")}
-          onConfirm={date => { setInstallDate(date.available_date); go("dPay"); }}
+          onConfirm={date => { setInstallDate(date.available_date); setDuctDay(date); setDuct(d => ({ ...d, window: null })); go("dTime"); }}
           onBack={() => go("dForm")} />}
-        {screen === "dPay" && installDate && <S_DuctPay {...common} total={ductQuoteFor(duct, catalog, lang).total} date={installDate} timeLabel={ductStartLabel(catalog, lang)}
-          onPayLater={() => finalizeDuctBooking(null)} onPayNow={() => go("dCard")} onBack={() => go("dSchedule")} />}
+        {screen === "dTime" && installDate && <S_DuctTime {...common} catalog={catalog} day={ductDay} selected={duct.window}
+          onSelect={w => { setDuct(d => ({ ...d, window: w })); go("dPay"); }} onBack={() => go("dSchedule")} />}
+        {screen === "dPay" && installDate && <S_DuctPay {...common} total={ductQuoteFor(duct, catalog, lang).total} date={installDate} timeLabel={ductStartLabel(catalog, lang, duct.window)}
+          onPayLater={() => finalizeDuctBooking(null)} onPayNow={() => go("dCard")} onBack={() => go("dTime")} />}
         {screen === "dCard" && <CheckoutStripe {...common} method="card" deposit={ductQuoteFor(duct, catalog, "en").total} customerInfo={customerInfo}
           descriptionText={`${brand.name} - Duct Cleaning ${installDate || ""}`} titleText={L(lang, "Pay by Card", "Pagar con Tarjeta")}
           onSuccess={info => { setPaymentInfo(info); finalizeDuctBooking(info); }} onBack={() => go("dPay")} />}
