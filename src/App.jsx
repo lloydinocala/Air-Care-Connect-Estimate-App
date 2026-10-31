@@ -1193,6 +1193,29 @@ function ComfortGuide({ lang, brand, t, onClose, customerContext, onDuctEmail })
         });
       } catch(e) { console.warn("Office notification email error:", e); }
 
+      // Let the customer know we got it (text + email when we have them).
+      const first = String(name || "").trim().split(/\s+/)[0] || "";
+      if (phone) {
+        const sms = lang === "es"
+          ? `${brand.name}: ¡Gracias${first ? ", " + first : ""}! Recibimos su solicitud de visita${isDuct ? " para limpieza de ductos" : ""}. Nuestra oficina le llamará para programarla.`
+          : `${brand.name}: Thanks${first ? ", " + first : ""}! We received your request for a home visit${isDuct ? " about duct cleaning" : ""}. Our office will call you to schedule it.`;
+        fetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: phone, message: sms }) }).catch(() => {});
+      }
+      if (email) {
+        fetch("/api/send-email", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: email,
+            subject: lang === "es" ? `Recibimos su solicitud de visita - ${brand.name}` : `We received your home visit request - ${brand.name}`,
+            htmlContent: `<div style="font-family:sans-serif;max-width:480px"><h2 style="color:#163E64">${brand.name}</h2>`
+              + (lang === "es"
+                ? `<p>Hola ${first || ""},</p><p>Gracias — recibimos su solicitud de una visita a domicilio${address ? ` en ${address}` : ""}. Un miembro de nuestro equipo le llamará al ${phone} para programarla.</p>`
+                : `<p>Hi ${first || "there"},</p><p>Thanks — we received your request for a home visit${address ? ` at ${address}` : ""}. A member of our team will call you at ${phone} to schedule it.</p>`)
+              + `</div>`,
+          }),
+        }).catch(() => {});
+      }
+
       setSendStatus("sent");
     } catch(e) {
       console.error("Home visit request error:", e);
@@ -4263,7 +4286,7 @@ export default function App() {
         }),
       }).catch(e => console.error("Detailed estimate email error:", e));
     }
-    if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
+    if (customerInfo?.phone) { // booking confirmations always go by text when there's a number
       const d = installDate ? new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
       const body = lang === "es"
         ? `${brand.name}: Reserva confirmada! Ref: ${finalRef}. Instalacion: ${d}. Le llamaremos pronto para confirmar detalles.`
@@ -4353,11 +4376,11 @@ export default function App() {
         }),
       }).catch(e => console.error("Duct confirmation email error:", e));
     }
-    if (customerInfo?.phone && (customerInfo?.contactPref === "text" || customerInfo?.contactPref === "both")) {
+    if (customerInfo?.phone) { // booking confirmations always go by text when there's a number
       const d = installDate ? new Date(installDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
       const body = lang === "es"
-        ? `${brand.name}: Limpieza de ductos confirmada! Ref: ${finalRef}. ${d} a las ${timeLabel}.`
-        : `${brand.name}: Duct cleaning confirmed! Ref: ${finalRef}. ${d} at ${timeLabel}.`;
+        ? `${brand.name}: Limpieza de ductos confirmada! Ref: ${finalRef}. ${d} a las ${timeLabel}. Le llamaremos si necesitamos ajustar la fecha u hora.`
+        : `${brand.name}: Duct cleaning confirmed! Ref: ${finalRef}. ${d} at ${timeLabel}. We'll call you if we need to adjust the date or time.`;
       fetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: customerInfo.phone, message: body }) }).catch(() => {});
     }
     go("confirmation");
